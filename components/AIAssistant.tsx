@@ -17,6 +17,8 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { aiService, AIProvider, ChatMessage, AIModel, AIResponse } from '../services/aiService';
 import { config, getAvailableAIProviders } from '../config/env';
 import { AIIcon, SpinnerIcon, CheckCircleIcon, SearchIcon } from '../constants';
@@ -59,8 +61,10 @@ export const AIAssistant: React.FC<AIAssistantProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [useThinking, setUseThinking] = useState(false);
   const [useWebSearch, setUseWebSearch] = useState(false);
+  const [useStreaming, setUseStreaming] = useState(true);
   const [showThinking, setShowThinking] = useState(false);
   const [currentThinking, setCurrentThinking] = useState<string>('');
+  const [streamingContent, setStreamingContent] = useState<string>('');
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -131,6 +135,7 @@ export const AIAssistant: React.FC<AIAssistantProps> = ({
     setError(null);
     setIsLoading(true);
     setCurrentThinking('');
+    setStreamingContent('');
 
     try {
       // Prepare conversation history
@@ -144,7 +149,7 @@ export const AIAssistant: React.FC<AIAssistantProps> = ({
         });
       }
 
-      // Send request to AI
+      // Send request to AI with streaming support
       const response: AIResponse = await aiService.chat(
         conversationMessages,
         provider,
@@ -154,6 +159,10 @@ export const AIAssistant: React.FC<AIAssistantProps> = ({
           useWebSearch,
           maxTokens: 4096,
           temperature: 0.7,
+          stream: useStreaming,
+          onStream: useStreaming ? (chunk: string) => {
+            setStreamingContent(prev => prev + chunk);
+          } : undefined,
         }
       );
 
@@ -165,6 +174,7 @@ export const AIAssistant: React.FC<AIAssistantProps> = ({
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+      setStreamingContent('');
 
       // Show thinking if available
       if (response.thinking) {
@@ -174,10 +184,11 @@ export const AIAssistant: React.FC<AIAssistantProps> = ({
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
       console.error('AI Assistant Error:', err);
+      setStreamingContent('');
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, messages, noteContent, provider, model, useThinking, useWebSearch]);
+  }, [input, isLoading, messages, noteContent, provider, model, useThinking, useWebSearch, useStreaming]);
 
   /**
    * Handle insert response into editor
@@ -293,7 +304,18 @@ export const AIAssistant: React.FC<AIAssistantProps> = ({
           </div>
 
           {/* Feature Toggles */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 flex-wrap">
+            {/* Streaming */}
+            <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useStreaming}
+                onChange={(e) => setUseStreaming(e.target.checked)}
+                className="rounded border-zinc-600 text-blue-600 focus:ring-blue-500"
+              />
+              <span>Streaming</span>
+            </label>
+
             {/* Extended Thinking */}
             {availableModels.find(m => m.id === model)?.supportsThinking && (
               <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
@@ -356,7 +378,11 @@ export const AIAssistant: React.FC<AIAssistantProps> = ({
                     : 'bg-zinc-700 text-zinc-100'
                 }`}
               >
-                <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                <div className="prose prose-invert max-w-none prose-sm">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {message.content}
+                  </ReactMarkdown>
+                </div>
 
                 {/* Insert Button for Assistant Messages */}
                 {message.role === 'assistant' && (
@@ -380,6 +406,23 @@ export const AIAssistant: React.FC<AIAssistantProps> = ({
               </div>
             </div>
           ))}
+
+          {/* Streaming Content Display */}
+          {isLoading && streamingContent && (
+            <div className="flex justify-start">
+              <div className="max-w-[80%] rounded-lg p-3 bg-zinc-700 text-zinc-100">
+                <div className="prose prose-invert max-w-none prose-sm">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {streamingContent}
+                  </ReactMarkdown>
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <SpinnerIcon className="w-4 h-4 text-blue-400 animate-spin" />
+                  <span className="text-xs text-zinc-400">Streaming...</span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Thinking Display */}
           {showThinking && currentThinking && (

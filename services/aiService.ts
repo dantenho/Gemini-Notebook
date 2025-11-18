@@ -60,6 +60,15 @@ export interface AIRequestOptions {
   useThinking?: boolean;
   useWebSearch?: boolean;
   systemPrompt?: string;
+  onStream?: (content: string) => void; // Callback for streaming content
+}
+
+/**
+ * Gemini Safety Settings
+ */
+export interface GeminiSafetySettings {
+  category: 'HARM_CATEGORY_HATE_SPEECH' | 'HARM_CATEGORY_SEXUALLY_EXPLICIT' | 'HARM_CATEGORY_DANGEROUS_CONTENT' | 'HARM_CATEGORY_HARASSMENT';
+  threshold: 'BLOCK_NONE' | 'BLOCK_ONLY_HIGH' | 'BLOCK_MEDIUM_AND_ABOVE' | 'BLOCK_LOW_AND_ABOVE';
 }
 
 /**
@@ -228,6 +237,11 @@ class AIService {
     messages: ChatMessage[],
     options: AIRequestOptions
   ): Promise<AIResponse> {
+    // Use streaming if callback is provided
+    if (options.stream && options.onStream) {
+      return this.chatOpenAIStream(messages, options);
+    }
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -263,6 +277,91 @@ class AIService {
   }
 
   /**
+   * Streaming chat completion with OpenAI
+   *
+   * @private
+   * @param {ChatMessage[]} messages - Conversation messages
+   * @param {AIRequestOptions} options - Request options
+   * @returns {Promise<AIResponse>} AI response
+   */
+  private async chatOpenAIStream(
+    messages: ChatMessage[],
+    options: AIRequestOptions
+  ): Promise<AIResponse> {
+    const model = options.model || 'gpt-4o';
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.ai.openaiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: messages.map(m => ({ role: m.role, content: m.content })),
+        max_tokens: options.maxTokens || 4096,
+        temperature: options.temperature ?? 0.7,
+        stream: true,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(`OpenAI API error: ${error.error?.message || response.statusText}`);
+    }
+
+    // Process streaming response
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    let fullContent = '';
+
+    if (reader) {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n').filter(line => line.trim() !== '');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              if (data === '[DONE]') continue;
+
+              try {
+                const jsonData = JSON.parse(data);
+                const content = jsonData.choices[0]?.delta?.content;
+
+                if (content) {
+                  fullContent += content;
+                  if (options.onStream) {
+                    options.onStream(content);
+                  }
+                }
+              } catch (e) {
+                // Skip invalid JSON lines
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    }
+
+    return {
+      content: fullContent,
+      usage: {
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+      },
+      model,
+      provider: 'openai',
+    };
+  }
+
+  /**
    * Chat completion with Anthropic Claude
    *
    * @private
@@ -274,6 +373,11 @@ class AIService {
     messages: ChatMessage[],
     options: AIRequestOptions
   ): Promise<AIResponse> {
+    // Use streaming if callback is provided
+    if (options.stream && options.onStream) {
+      return this.chatAnthropicStream(messages, options);
+    }
+
     // Extract system message if present
     const systemMessage = messages.find(m => m.role === 'system');
     const conversationMessages = messages.filter(m => m.role !== 'system');
@@ -326,6 +430,111 @@ class AIService {
   }
 
   /**
+   * Streaming chat completion with Anthropic Claude
+   *
+   * @private
+   * @param {ChatMessage[]} messages - Conversation messages
+   * @param {AIRequestOptions} options - Request options
+   * @returns {Promise<AIResponse>} AI response
+   */
+  private async chatAnthropicStream(
+    messages: ChatMessage[],
+    options: AIRequestOptions
+  ): Promise<AIResponse> {
+    const model = options.model || 'claude-sonnet-4';
+
+    // Extract system message if present
+    const systemMessage = messages.find(m => m.role === 'system');
+    const conversationMessages = messages.filter(m => m.role !== 'system');
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': config.ai.anthropicKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: options.maxTokens || 4096,
+        temperature: options.temperature ?? 0.7,
+        system: systemMessage?.content || undefined,
+        messages: conversationMessages.map(m => ({
+          role: m.role === 'user' ? 'user' : 'assistant',
+          content: m.content,
+        })),
+        stream: true,
+        // Enable extended thinking if supported and requested
+        thinking: options.useThinking && config.ai.enableExtendedThinking
+          ? { type: 'enabled', budget_tokens: 10000 }
+          : undefined,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(`Anthropic API error: ${error.error?.message || response.statusText}`);
+    }
+
+    // Process streaming response
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    let fullContent = '';
+    let thinkingContent = '';
+
+    if (reader) {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n').filter(line => line.trim() !== '');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+
+              try {
+                const jsonData = JSON.parse(data);
+
+                // Handle content blocks
+                if (jsonData.type === 'content_block_delta') {
+                  if (jsonData.delta?.type === 'text_delta') {
+                    const text = jsonData.delta.text;
+                    fullContent += text;
+                    if (options.onStream) {
+                      options.onStream(text);
+                    }
+                  } else if (jsonData.delta?.type === 'thinking_delta') {
+                    thinkingContent += jsonData.delta.thinking;
+                  }
+                }
+              } catch (e) {
+                // Skip invalid JSON lines
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    }
+
+    return {
+      content: fullContent,
+      thinking: thinkingContent || undefined,
+      usage: {
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+      },
+      model,
+      provider: 'anthropic',
+    };
+  }
+
+  /**
    * Chat completion with Google Gemini
    *
    * @private
@@ -338,6 +547,12 @@ class AIService {
     options: AIRequestOptions
   ): Promise<AIResponse> {
     const modelId = options.model || 'gemini-2.0-flash-exp';
+
+    // Use streaming if callback is provided
+    if (options.stream && options.onStream) {
+      return this.chatGeminiStream(messages, options);
+    }
+
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${config.ai.geminiKey}`;
 
     // Convert messages to Gemini format
@@ -350,6 +565,14 @@ class AIService {
 
     const systemInstruction = messages.find(m => m.role === 'system');
 
+    // Default safety settings - block only high-risk content
+    const safetySettings = [
+      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+    ];
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -360,6 +583,7 @@ class AIService {
         systemInstruction: systemInstruction ? {
           parts: [{ text: systemInstruction.content }],
         } : undefined,
+        safetySettings,
         generationConfig: {
           temperature: options.temperature ?? 0.7,
           maxOutputTokens: options.maxTokens || 4096,
@@ -382,6 +606,118 @@ class AIService {
         promptTokens: data.usageMetadata?.promptTokenCount || 0,
         completionTokens: data.usageMetadata?.candidatesTokenCount || 0,
         totalTokens: data.usageMetadata?.totalTokenCount || 0,
+      },
+      model: modelId,
+      provider: 'gemini',
+    };
+  }
+
+  /**
+   * Streaming chat completion with Google Gemini
+   *
+   * @private
+   * @param {ChatMessage[]} messages - Conversation messages
+   * @param {AIRequestOptions} options - Request options
+   * @returns {Promise<AIResponse>} AI response
+   */
+  private async chatGeminiStream(
+    messages: ChatMessage[],
+    options: AIRequestOptions
+  ): Promise<AIResponse> {
+    const modelId = options.model || 'gemini-2.0-flash-exp';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:streamGenerateContent?key=${config.ai.geminiKey}&alt=sse`;
+
+    // Convert messages to Gemini format
+    const contents = messages
+      .filter(m => m.role !== 'system')
+      .map(m => ({
+        role: m.role === 'user' ? 'user' : 'model',
+        parts: [{ text: m.content }],
+      }));
+
+    const systemInstruction = messages.find(m => m.role === 'system');
+
+    // Default safety settings - block only high-risk content
+    const safetySettings = [
+      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+    ];
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents,
+        systemInstruction: systemInstruction ? {
+          parts: [{ text: systemInstruction.content }],
+        } : undefined,
+        safetySettings,
+        generationConfig: {
+          temperature: options.temperature ?? 0.7,
+          maxOutputTokens: options.maxTokens || 4096,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(`Gemini API error: ${error.error?.message || response.statusText}`);
+    }
+
+    // Process streaming response
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    let fullContent = '';
+    let usageMetadata = { promptTokenCount: 0, candidatesTokenCount: 0, totalTokenCount: 0 };
+
+    if (reader) {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const jsonData = JSON.parse(line.slice(6));
+
+                if (jsonData.candidates && jsonData.candidates[0]?.content?.parts) {
+                  const text = jsonData.candidates[0].content.parts[0]?.text || '';
+                  if (text) {
+                    fullContent += text;
+                    if (options.onStream) {
+                      options.onStream(text);
+                    }
+                  }
+                }
+
+                if (jsonData.usageMetadata) {
+                  usageMetadata = jsonData.usageMetadata;
+                }
+              } catch (e) {
+                // Skip invalid JSON lines
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    }
+
+    return {
+      content: fullContent,
+      usage: {
+        promptTokens: usageMetadata.promptTokenCount || 0,
+        completionTokens: usageMetadata.candidatesTokenCount || 0,
+        totalTokens: usageMetadata.totalTokenCount || 0,
       },
       model: modelId,
       provider: 'gemini',
