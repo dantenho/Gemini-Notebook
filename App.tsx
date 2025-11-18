@@ -199,9 +199,22 @@ const App: React.FC = () => {
    * @param newContent - The new HTML content for the note.
    */
   const handleUpdateNote = useCallback((noteId: string, newContent: string) => {
-    setNotes(prevNotes => 
-      prevNotes.map(note => 
+    setNotes(prevNotes =>
+      prevNotes.map(note =>
         note.id === noteId ? { ...note, content: newContent } : note
+      )
+    );
+  }, []);
+
+  /**
+   * Callback to update the title of a specific note.
+   * @param noteId - The ID of the note to update.
+   * @param newTitle - The new title for the note.
+   */
+  const handleUpdateTitle = useCallback((noteId: string, newTitle: string) => {
+    setNotes(prevNotes =>
+      prevNotes.map(note =>
+        note.id === noteId ? { ...note, title: newTitle } : note
       )
     );
   }, []);
@@ -262,10 +275,11 @@ const App: React.FC = () => {
             onAddNote={handleAddNote}
         />
         <main className="flex-1 flex flex-col">
-            <Editor 
-                note={selectedNote} 
+            <Editor
+                note={selectedNote}
                 notebookPath={notebookPath}
                 onUpdateNote={handleUpdateNote}
+                onUpdateTitle={handleUpdateTitle}
             />
         </main>
     </div>
