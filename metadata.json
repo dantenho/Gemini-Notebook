@@ -1,0 +1,5 @@
+{
+  "name": "Gemini Notebook",
+  "description": "An AI-powered notebook application, similar to Evernote, enhanced with a suite of Gemini features including content generation, image creation, AI chat, and grounded search to provide an intelligent and dynamic note-taking experience.",
+  "requestFramePermissions": []
+}
