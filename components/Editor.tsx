@@ -25,8 +25,13 @@ import {
   SubscriptIcon,
   SuperscriptIcon,
   MindmapIcon,
+  AIIcon,
+  ImageIcon,
+  PDFIcon,
 } from '../constants';
 import MindmapGenerator from './MindmapGenerator';
+import AIAssistant from './AIAssistant';
+import { isAIAvailable } from '../config/env';
 
 // Color picker component
 const ColorPicker: React.FC<{ onSelectColor: (color: string) => void; onClose: () => void }> = ({ onSelectColor, onClose }) => {
@@ -114,7 +119,13 @@ type ToolbarState = {
 /**
  * A comprehensive toolbar component for the rich text editor with extensive formatting options.
  */
-const EditorToolbar: React.FC<{ onOpenMindmap: () => void; content: string }> = ({ onOpenMindmap, content }) => {
+const EditorToolbar: React.FC<{
+  onOpenMindmap: () => void;
+  onOpenAI: () => void;
+  onInsertImage: () => void;
+  onInsertPDF: () => void;
+  content: string;
+}> = ({ onOpenMindmap, onOpenAI, onInsertImage, onInsertPDF, content }) => {
     const [showFontDropdown, setShowFontDropdown] = useState(false);
     const [showSizeDropdown, setShowSizeDropdown] = useState(false);
     const [showHeadingDropdown, setShowHeadingDropdown] = useState(false);
@@ -747,11 +758,43 @@ const EditorToolbar: React.FC<{ onOpenMindmap: () => void; content: string }> = 
             {/* Mindmap Generator */}
             <button
                 onClick={onOpenMindmap}
-                title="Gerar Mindmap ou Diagrama"
+                title="Generate Mindmap or Diagram"
                 className="p-2 hover:bg-zinc-700 rounded-md transition-colors flex items-center gap-1 text-sm"
             >
                 <MindmapIcon className="w-4 h-4 text-purple-400" />
                 <span className="hidden sm:inline">Mindmap</span>
+            </button>
+
+            {/* AI Assistant */}
+            {isAIAvailable() && (
+                <button
+                    onClick={onOpenAI}
+                    title="AI Assistant"
+                    className="p-2 hover:bg-zinc-700 rounded-md transition-colors flex items-center gap-1 text-sm"
+                >
+                    <AIIcon className="w-4 h-4 text-blue-400" />
+                    <span className="hidden sm:inline">AI</span>
+                </button>
+            )}
+
+            <div className="h-6 border-l border-zinc-600 mx-1"></div>
+
+            {/* Image Insert */}
+            <button
+                onClick={onInsertImage}
+                title="Insert Image"
+                className="p-2 hover:bg-zinc-700 rounded-md transition-colors"
+            >
+                <ImageIcon className="w-4 h-4 text-green-400" />
+            </button>
+
+            {/* PDF Insert */}
+            <button
+                onClick={onInsertPDF}
+                title="Insert PDF"
+                className="p-2 hover:bg-zinc-700 rounded-md transition-colors"
+            >
+                <PDFIcon className="w-4 h-4 text-red-400" />
             </button>
 
             <div className="h-6 border-l border-zinc-600 mx-1"></div>
@@ -780,7 +823,10 @@ const Editor: React.FC<{
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState('');
   const [showMindmapGenerator, setShowMindmapGenerator] = useState(false);
+  const [showAIAssistant, setShowAIAssistant] = useState(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (editorRef.current && note && editorRef.current.innerHTML !== note.content) {
@@ -857,11 +903,127 @@ const Editor: React.FC<{
     }
   };
 
+  /**
+   * Insert AI response into editor
+   */
+  const handleInsertAI = (text: string) => {
+    if (editorRef.current && note) {
+      const htmlContent = `<p>${text.replace(/\n/g, '</p><p>')}</p>`;
+
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        range.deleteContents();
+        const div = document.createElement('div');
+        div.innerHTML = htmlContent;
+        while (div.firstChild) {
+          range.insertNode(div.firstChild);
+        }
+      } else {
+        editorRef.current.innerHTML += htmlContent;
+      }
+
+      handleContentChange();
+    }
+  };
+
+  /**
+   * Handle image insertion
+   */
+  const handleInsertImage = () => {
+    fileInputRef.current?.click();
+  };
+
+  /**
+   * Handle image file selection
+   */
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const imageUrl = event.target?.result as string;
+        if (editorRef.current && note) {
+          const imageHtml = `<img src="${imageUrl}" alt="${file.name}" style="max-width: 100%; height: auto; margin: 16px 0;" />`;
+
+          const selection = window.getSelection();
+          if (selection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            range.deleteContents();
+            const div = document.createElement('div');
+            div.innerHTML = imageHtml;
+            range.insertNode(div.firstChild!);
+          } else {
+            editorRef.current.innerHTML += imageHtml;
+          }
+
+          handleContentChange();
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+    // Reset input
+    e.target.value = '';
+  };
+
+  /**
+   * Handle PDF insertion
+   */
+  const handleInsertPDF = () => {
+    pdfInputRef.current?.click();
+  };
+
+  /**
+   * Handle PDF file selection
+   */
+  const handlePDFFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type === 'application/pdf') {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const pdfUrl = event.target?.result as string;
+        if (editorRef.current && note) {
+          const pdfHtml = `<div style="border: 2px solid #3f3f46; border-radius: 8px; padding: 16px; margin: 16px 0; background-color: #18181b;">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" style="width: 24px; height: 24px; color: #ef4444;">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+              </svg>
+              <span style="font-weight: 600; color: #e5e7eb;">${file.name}</span>
+            </div>
+            <a href="${pdfUrl}" download="${file.name}" style="display: inline-block; padding: 8px 16px; background-color: #3b82f6; color: white; border-radius: 6px; text-decoration: none; font-size: 14px;">Download PDF</a>
+          </div>`;
+
+          const selection = window.getSelection();
+          if (selection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            range.deleteContents();
+            const div = document.createElement('div');
+            div.innerHTML = pdfHtml;
+            range.insertNode(div.firstChild!);
+          } else {
+            editorRef.current.innerHTML += pdfHtml;
+          }
+
+          handleContentChange();
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+    // Reset input
+    e.target.value = '';
+  };
+
   if (!note) {
     return (
         <div className="flex-1 flex flex-col h-full bg-zinc-900">
              <div className="p-2.5 border-b border-zinc-700 h-[45px]"></div>
-             <EditorToolbar onOpenMindmap={() => {}} content="" />
+             <EditorToolbar
+               onOpenMindmap={() => {}}
+               onOpenAI={() => {}}
+               onInsertImage={() => {}}
+               onInsertPDF={() => {}}
+               content=""
+             />
              <div className="flex-1 flex items-center justify-center text-zinc-500">
                  Select a note to view or create a new one.
              </div>
@@ -911,14 +1073,44 @@ const Editor: React.FC<{
       </header>
       <EditorToolbar
         onOpenMindmap={() => setShowMindmapGenerator(true)}
+        onOpenAI={() => setShowAIAssistant(true)}
+        onInsertImage={handleInsertImage}
+        onInsertPDF={handleInsertPDF}
         content={note.content}
       />
+
+      {/* Hidden file inputs */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleImageFileChange}
+        style={{ display: 'none' }}
+      />
+      <input
+        ref={pdfInputRef}
+        type="file"
+        accept="application/pdf"
+        onChange={handlePDFFileChange}
+        style={{ display: 'none' }}
+      />
+
+      {/* Mindmap Generator Modal */}
       <MindmapGenerator
         isOpen={showMindmapGenerator}
         onClose={() => setShowMindmapGenerator(false)}
         content={note.content}
         onInsert={handleInsertMermaid}
       />
+
+      {/* AI Assistant Modal */}
+      <AIAssistant
+        isOpen={showAIAssistant}
+        onClose={() => setShowAIAssistant(false)}
+        noteContent={note.content}
+        onInsert={handleInsertAI}
+      />
+
       <div className="flex-1 overflow-y-auto relative">
           <div
             ref={editorRef}
