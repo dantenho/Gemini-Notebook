@@ -1,3 +1,14 @@
+/**
+ * @fileoverview Note List Component with Hierarchical Structure
+ *
+ * Displays a tree-view of areas, stacks, notebooks, and notes
+ * with expand/collapse functionality and CRUD operations.
+ *
+ * Performance: Wrapped with React.memo to prevent unnecessary re-renders.
+ *
+ * @module components/NoteList
+ */
+
 import React, { useState } from 'react';
 import { Note, Node } from '../types';
 import { ShareIcon, ChevronRightIcon, ChevronDownIcon, PlusIcon, TrashIcon } from '../constants';
@@ -367,8 +378,9 @@ const AreaItem: React.FC<{
 
 /**
  * A component that displays a hierarchical list of areas, stacks, notebooks, and notes.
+ * Wrapped with React.memo for performance optimization.
  */
-export const NoteList: React.FC<NoteListProps> = ({
+const NoteListComponent: React.FC<NoteListProps> = ({
   areas,
   notes,
   selectedNoteId,
@@ -426,3 +438,9 @@ export const NoteList: React.FC<NoteListProps> = ({
     </aside>
   );
 };
+
+/**
+ * Export memoized version to prevent unnecessary re-renders
+ * Only re-renders when props actually change
+ */
+export const NoteList = React.memo(NoteListComponent);

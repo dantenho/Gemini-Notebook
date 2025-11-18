@@ -943,4 +943,8 @@ const Editor: React.FC<{
   );
 };
 
-export default Editor;
+/**
+ * Export memoized version to prevent unnecessary re-renders
+ * Only re-renders when props actually change
+ */
+export default React.memo(Editor);
