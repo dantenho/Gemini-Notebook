@@ -174,3 +174,23 @@ export const SuperscriptIcon = ({ className = "w-5 h-5" }: { className?: string 
         <text x="14" y="10" fontSize="8">2</text>
     </svg>
 );
+
+export const MindmapIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className={className}>
+        <circle cx="12" cy="12" r="3" fill="currentColor" />
+        <circle cx="6" cy="6" r="2" />
+        <circle cx="18" cy="6" r="2" />
+        <circle cx="6" cy="18" r="2" />
+        <circle cx="18" cy="18" r="2" />
+        <line x1="12" y1="9" x2="6" y2="6" />
+        <line x1="12" y1="9" x2="18" y2="6" />
+        <line x1="12" y1="15" x2="6" y2="18" />
+        <line x1="12" y1="15" x2="18" y2="18" />
+    </svg>
+);
+
+export const CloudSyncIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z" />
+    </svg>
+);

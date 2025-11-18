@@ -24,7 +24,9 @@ import {
   QuoteIcon,
   SubscriptIcon,
   SuperscriptIcon,
+  MindmapIcon,
 } from '../constants';
+import MindmapGenerator from './MindmapGenerator';
 
 // Color picker component
 const ColorPicker: React.FC<{ onSelectColor: (color: string) => void; onClose: () => void }> = ({ onSelectColor, onClose }) => {
@@ -112,7 +114,7 @@ type ToolbarState = {
 /**
  * A comprehensive toolbar component for the rich text editor with extensive formatting options.
  */
-const EditorToolbar: React.FC = () => {
+const EditorToolbar: React.FC<{ onOpenMindmap: () => void; content: string }> = ({ onOpenMindmap, content }) => {
     const [showFontDropdown, setShowFontDropdown] = useState(false);
     const [showSizeDropdown, setShowSizeDropdown] = useState(false);
     const [showHeadingDropdown, setShowHeadingDropdown] = useState(false);
@@ -742,6 +744,18 @@ const EditorToolbar: React.FC = () => {
 
             <div className="h-6 border-l border-zinc-600 mx-1"></div>
 
+            {/* Mindmap Generator */}
+            <button
+                onClick={onOpenMindmap}
+                title="Gerar Mindmap ou Diagrama"
+                className="p-2 hover:bg-zinc-700 rounded-md transition-colors flex items-center gap-1 text-sm"
+            >
+                <MindmapIcon className="w-4 h-4 text-purple-400" />
+                <span className="hidden sm:inline">Mindmap</span>
+            </button>
+
+            <div className="h-6 border-l border-zinc-600 mx-1"></div>
+
             <button
                 onClick={() => format('removeFormat', null)}
                 title="Clear Formatting"
@@ -765,6 +779,7 @@ const Editor: React.FC<{
   const editorRef = useRef<HTMLDivElement>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState('');
+  const [showMindmapGenerator, setShowMindmapGenerator] = useState(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -820,11 +835,33 @@ const Editor: React.FC<{
     }
   };
 
+  const handleInsertMermaid = (mermaidCode: string) => {
+    if (editorRef.current && note) {
+      // Insert Mermaid diagram as a pre element with special class
+      const mermaidHtml = `<pre class="mermaid-diagram" contenteditable="false" style="background-color: #18181b; padding: 16px; border-radius: 8px; border: 1px solid #3f3f46; margin: 16px 0;">${mermaidCode}</pre><p><br></p>`;
+
+      // Insert at cursor position or at the end
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        range.deleteContents();
+        const div = document.createElement('div');
+        div.innerHTML = mermaidHtml;
+        range.insertNode(div.firstChild!);
+      } else {
+        editorRef.current.innerHTML += mermaidHtml;
+      }
+
+      // Trigger content update
+      handleContentChange();
+    }
+  };
+
   if (!note) {
     return (
         <div className="flex-1 flex flex-col h-full bg-zinc-900">
              <div className="p-2.5 border-b border-zinc-700 h-[45px]"></div>
-             <EditorToolbar />
+             <EditorToolbar onOpenMindmap={() => {}} content="" />
              <div className="flex-1 flex items-center justify-center text-zinc-500">
                  Select a note to view or create a new one.
              </div>
@@ -872,7 +909,16 @@ const Editor: React.FC<{
             </div>
         </div>
       </header>
-      <EditorToolbar />
+      <EditorToolbar
+        onOpenMindmap={() => setShowMindmapGenerator(true)}
+        content={note.content}
+      />
+      <MindmapGenerator
+        isOpen={showMindmapGenerator}
+        onClose={() => setShowMindmapGenerator(false)}
+        content={note.content}
+        onInsert={handleInsertMermaid}
+      />
       <div className="flex-1 overflow-y-auto relative">
           <div
             ref={editorRef}
