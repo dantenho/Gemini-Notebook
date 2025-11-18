@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Note } from '../types';
-import { 
-  MoreIconHorizontal, 
-  ChevronRightIcon, 
-  ChevronDownIcon, 
-  CheckIcon, 
-  ArrowUturnLeftIcon, 
+import {
+  MoreIconHorizontal,
+  ChevronRightIcon,
+  ChevronDownIcon,
+  CheckIcon,
+  ArrowUturnLeftIcon,
   ArrowUturnRightIcon,
   BoldIcon,
   ItalicIcon,
@@ -19,6 +19,36 @@ import {
   AlignRightIcon,
   TableIcon,
 } from '../constants';
+
+// Color picker component
+const ColorPicker: React.FC<{ onSelectColor: (color: string) => void; onClose: () => void }> = ({ onSelectColor, onClose }) => {
+  const colors = [
+    '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#efefef', '#f3f3f3', '#ffffff',
+    '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff',
+    '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc',
+    '#dd7e6b', '#ea9999', '#f9cb9c', '#ffe599', '#b6d7a8', '#a2c4c9', '#a4c2f4', '#9fc5e8', '#b4a7d6', '#d5a6bd',
+    '#cc4125', '#e06666', '#f6b26b', '#ffd966', '#93c47d', '#76a5af', '#6d9eeb', '#6fa8dc', '#8e7cc3', '#c27ba0',
+  ];
+
+  return (
+    <div className="absolute top-full left-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-md shadow-lg z-20 p-2">
+      <div className="grid grid-cols-10 gap-1 w-64">
+        {colors.map(color => (
+          <button
+            key={color}
+            onClick={() => {
+              onSelectColor(color);
+              onClose();
+            }}
+            className="w-6 h-6 rounded border border-zinc-600 hover:border-zinc-400"
+            style={{ backgroundColor: color }}
+            title={color}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
 
 type ToolbarState = {
     bold: boolean;
@@ -38,6 +68,9 @@ type ToolbarState = {
 const EditorToolbar: React.FC = () => {
     const [showFontDropdown, setShowFontDropdown] = useState(false);
     const [showSizeDropdown, setShowSizeDropdown] = useState(false);
+    const [showInsertDropdown, setShowInsertDropdown] = useState(false);
+    const [showColorPicker, setShowColorPicker] = useState(false);
+    const [showBgColorPicker, setShowBgColorPicker] = useState(false);
     const [currentFont, setCurrentFont] = useState('Sans Serif');
     const [currentSize, setCurrentSize] = useState(15);
     const [toolbarState, setToolbarState] = useState<ToolbarState>({
@@ -55,6 +88,9 @@ const EditorToolbar: React.FC = () => {
 
     const fontDropdownRef = useRef<HTMLDivElement>(null);
     const sizeDropdownRef = useRef<HTMLDivElement>(null);
+    const insertDropdownRef = useRef<HTMLDivElement>(null);
+    const colorPickerRef = useRef<HTMLDivElement>(null);
+    const bgColorPickerRef = useRef<HTMLDivElement>(null);
 
     /**
      * Queries the document for the current selection's command states and updates the toolbar UI.
@@ -96,6 +132,15 @@ const EditorToolbar: React.FC = () => {
             }
             if (sizeDropdownRef.current && !sizeDropdownRef.current.contains(event.target as Node)) {
                 setShowSizeDropdown(false);
+            }
+            if (insertDropdownRef.current && !insertDropdownRef.current.contains(event.target as Node)) {
+                setShowInsertDropdown(false);
+            }
+            if (colorPickerRef.current && !colorPickerRef.current.contains(event.target as Node)) {
+                setShowColorPicker(false);
+            }
+            if (bgColorPickerRef.current && !bgColorPickerRef.current.contains(event.target as Node)) {
+                setShowBgColorPicker(false);
             }
         };
 
@@ -145,23 +190,98 @@ const EditorToolbar: React.FC = () => {
         else if (size <= 24) sizeValue = '5'; // 18pt
         else if (size <= 32) sizeValue = '6'; // 24pt
         else sizeValue = '7';                 // 36pt
-        
+
         format('fontSize', sizeValue);
         setCurrentSize(size);
         setShowSizeDropdown(false);
     };
+
+    /**
+     * Handles inserting a link.
+     */
+    const handleInsertLink = () => {
+        const url = prompt('Enter the URL:');
+        if (url) {
+            format('createLink', url);
+        }
+    };
+
+    /**
+     * Handles inserting an image.
+     */
+    const handleInsertImage = () => {
+        const url = prompt('Enter the image URL:');
+        if (url) {
+            format('insertImage', url);
+        }
+    };
+
+    /**
+     * Handles inserting a horizontal rule.
+     */
+    const handleInsertHR = () => {
+        format('insertHorizontalRule', null);
+    };
+
+    /**
+     * Handles inserting code block.
+     */
+    const handleInsertCode = () => {
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            const selectedText = range.toString();
+            const codeElement = document.createElement('code');
+            codeElement.textContent = selectedText || 'code';
+            codeElement.style.backgroundColor = '#27272a';
+            codeElement.style.padding = '2px 6px';
+            codeElement.style.borderRadius = '3px';
+            codeElement.style.fontFamily = 'monospace';
+            range.deleteContents();
+            range.insertNode(codeElement);
+        }
+    };
+
+    /**
+     * Handles undo action.
+     */
+    const handleUndo = () => {
+        document.execCommand('undo', false);
+    };
+
+    /**
+     * Handles redo action.
+     */
+    const handleRedo = () => {
+        document.execCommand('redo', false);
+    };
     
     return (
         <div className="flex items-center space-x-1 p-2 border-b border-zinc-700 bg-zinc-800 flex-wrap">
-            <button className="flex items-center space-x-1 p-2 hover:bg-zinc-700 rounded-md">
-                <span>Insert</span>
-                <ChevronDownIcon className="w-4 h-4"/>
+            {/* Insert Dropdown */}
+            <div ref={insertDropdownRef} className="relative">
+                <button
+                    onClick={() => setShowInsertDropdown(prev => !prev)}
+                    className="flex items-center space-x-1 p-2 hover:bg-zinc-700 rounded-md"
+                >
+                    <span>Insert</span>
+                    <ChevronDownIcon className="w-4 h-4"/>
+                </button>
+                {showInsertDropdown && (
+                    <div className="absolute top-full left-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-md shadow-lg z-10 w-48">
+                        <button onClick={() => { handleInsertImage(); setShowInsertDropdown(false); }} className="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-700">Image</button>
+                        <button onClick={() => { handleInsertLink(); setShowInsertDropdown(false); }} className="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-700">Link</button>
+                        <button onClick={() => { handleInsertCode(); setShowInsertDropdown(false); }} className="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-700">Code</button>
+                        <button onClick={() => { handleInsertHR(); setShowInsertDropdown(false); }} className="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-700">Horizontal Line</button>
+                        <button onClick={() => { format('insertHTML', '<table style="width: 100%; border-collapse: collapse;"><tbody><tr><td style="border: 1px solid #52525b; padding: 8px;">&nbsp;</td><td style="border: 1px solid #52525b; padding: 8px;">&nbsp;</td></tr><tr><td style="border: 1px solid #52525b; padding: 8px;">&nbsp;</td><td style="border: 1px solid #52525b; padding: 8px;">&nbsp;</td></tr></tbody></table><p><br></p>'); setShowInsertDropdown(false); }} className="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-700">Table</button>
+                    </div>
+                )}
+            </div>
+            <button onClick={() => format('formatBlock', '<h1>')} title="Format as Heading" className="flex items-center space-x-1 p-2 hover:bg-zinc-700 rounded-md">
+                <span className="text-sm font-semibold">H</span>
             </button>
-            <button className="flex items-center space-x-1 p-2 hover:bg-zinc-700 rounded-md">
-                <CheckIcon className="w-4 h-4 text-green-400"/>
-            </button>
-            <button className="p-2 hover:bg-zinc-700 rounded-md"><ArrowUturnLeftIcon className="w-5 h-5" /></button>
-            <button className="p-2 hover:bg-zinc-700 rounded-md"><ArrowUturnRightIcon className="w-5 h-5" /></button>
+            <button onClick={handleUndo} title="Undo" className="p-2 hover:bg-zinc-700 rounded-md"><ArrowUturnLeftIcon className="w-5 h-5" /></button>
+            <button onClick={handleRedo} title="Redo" className="p-2 hover:bg-zinc-700 rounded-md"><ArrowUturnRightIcon className="w-5 h-5" /></button>
             <div className="h-6 border-l border-zinc-600 mx-2"></div>
 
             {/* Font Family Dropdown */}
@@ -209,7 +329,7 @@ const EditorToolbar: React.FC = () => {
 
             <button onClick={() => format('insertUnorderedList')} title="Bulleted List" className={`p-2 hover:bg-zinc-700 rounded-md ${toolbarState.unorderedList ? 'bg-zinc-600' : ''}`}><ListUnorderedIcon className="w-5 h-5" /></button>
             <button onClick={() => format('insertOrderedList')} title="Numbered List" className={`p-2 hover:bg-zinc-700 rounded-md ${toolbarState.orderedList ? 'bg-zinc-600' : ''}`}><ListOrderedIcon className="w-5 h-5" /></button>
-            <button className="p-2 hover:bg-zinc-700 rounded-md"><LinkIcon className="w-5 h-5" /></button>
+            <button onClick={handleInsertLink} title="Insert Link" className="p-2 hover:bg-zinc-700 rounded-md"><LinkIcon className="w-5 h-5" /></button>
             <button onClick={() => format('insertHTML', '<table style="width: 100%; border-collapse: collapse;"><tbody><tr><td style="border: 1px solid #52525b; padding: 8px;">&nbsp;</td><td style="border: 1px solid #52525b; padding: 8px;">&nbsp;</td></tr><tr><td style="border: 1px solid #52525b; padding: 8px;">&nbsp;</td><td style="border: 1px solid #52525b; padding: 8px;">&nbsp;</td></tr></tbody></table><p><br></p>')} title="Insert Table" className="p-2 hover:bg-zinc-700 rounded-md"><TableIcon className="w-5 h-5" /></button>
 
             <div className="h-6 border-l border-zinc-600 mx-2"></div>
@@ -218,7 +338,46 @@ const EditorToolbar: React.FC = () => {
             <button onClick={() => format('justifyCenter')} title="Align Center" className={`p-2 hover:bg-zinc-700 rounded-md ${toolbarState.justifyCenter ? 'bg-zinc-600' : ''}`}><AlignCenterIcon className="w-5 h-5" /></button>
             <button onClick={() => format('justifyRight')} title="Align Right" className={`p-2 hover:bg-zinc-700 rounded-md ${toolbarState.justifyRight ? 'bg-zinc-600' : ''}`}><AlignRightIcon className="w-5 h-5" /></button>
 
-            <button className="p-2 hover:bg-zinc-700 rounded-md"><MoreIconHorizontal className="w-5 h-5" /></button>
+            <div className="h-6 border-l border-zinc-600 mx-2"></div>
+
+            {/* Text Color Picker */}
+            <div ref={colorPickerRef} className="relative">
+                <button
+                    onClick={() => setShowColorPicker(prev => !prev)}
+                    title="Text Color"
+                    className="p-2 hover:bg-zinc-700 rounded-md flex items-center"
+                >
+                    <div className="flex flex-col items-center">
+                        <span className="text-sm font-bold">A</span>
+                        <div className="w-5 h-0.5 bg-yellow-400 mt-0.5"></div>
+                    </div>
+                </button>
+                {showColorPicker && (
+                    <ColorPicker
+                        onSelectColor={(color) => format('foreColor', color)}
+                        onClose={() => setShowColorPicker(false)}
+                    />
+                )}
+            </div>
+
+            {/* Background Color Picker */}
+            <div ref={bgColorPickerRef} className="relative">
+                <button
+                    onClick={() => setShowBgColorPicker(prev => !prev)}
+                    title="Background Color"
+                    className="p-2 hover:bg-zinc-700 rounded-md"
+                >
+                    <div className="w-5 h-5 border-2 border-zinc-400 rounded" style={{ background: 'linear-gradient(to bottom, transparent 50%, #fbbf24 50%)' }}></div>
+                </button>
+                {showBgColorPicker && (
+                    <ColorPicker
+                        onSelectColor={(color) => format('backColor', color)}
+                        onClose={() => setShowBgColorPicker(false)}
+                    />
+                )}
+            </div>
+
+            <button onClick={() => format('removeFormat', null)} title="Clear Formatting" className="p-2 hover:bg-zinc-700 rounded-md text-xs font-semibold">Clear</button>
         </div>
     );
 }
@@ -229,13 +388,18 @@ const EditorToolbar: React.FC = () => {
  * @param {Note | null} props.note - The currently selected note to display.
  * @param {string[]} props.notebookPath - The breadcrumb path for the current notebook.
  * @param {(noteId: string, newContent: string) => void} props.onUpdateNote - Callback to update a note's content.
+ * @param {(noteId: string, newTitle: string) => void} props.onUpdateTitle - Callback to update a note's title.
  */
-const Editor: React.FC<{ 
-    note: Note | null; 
+const Editor: React.FC<{
+    note: Note | null;
     notebookPath: string[];
     onUpdateNote: (noteId: string, newContent: string) => void;
-}> = ({ note, notebookPath, onUpdateNote }) => {
+    onUpdateTitle?: (noteId: string, newTitle: string) => void;
+}> = ({ note, notebookPath, onUpdateNote, onUpdateTitle }) => {
   const editorRef = useRef<HTMLDivElement>(null);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleValue, setTitleValue] = useState('');
+  const titleInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // This effect synchronizes the editor's content with the selected note.
@@ -247,7 +411,20 @@ const Editor: React.FC<{
      else if (editorRef.current && !note) {
       editorRef.current.innerHTML = ''; // Clear editor if no note is selected
     }
+
+    // Update title value when note changes
+    if (note) {
+      setTitleValue(note.title);
+    }
   }, [note]);
+
+  // Focus title input when editing starts
+  useEffect(() => {
+    if (isEditingTitle && titleInputRef.current) {
+      titleInputRef.current.focus();
+      titleInputRef.current.select();
+    }
+  }, [isEditingTitle]);
 
 
   // Debounced content change handler could be an improvement here.
@@ -261,6 +438,33 @@ const Editor: React.FC<{
       }
     }
   }, [note, onUpdateNote]);
+
+  const handleTitleClick = () => {
+    setIsEditingTitle(true);
+  };
+
+  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setTitleValue(e.target.value);
+  };
+
+  const handleTitleBlur = () => {
+    setIsEditingTitle(false);
+    if (note && onUpdateTitle && titleValue.trim() !== '' && titleValue !== note.title) {
+      onUpdateTitle(note.id, titleValue.trim());
+    } else if (titleValue.trim() === '') {
+      setTitleValue(note?.title || 'Untitled');
+    }
+  };
+
+  const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleTitleBlur();
+    } else if (e.key === 'Escape') {
+      setTitleValue(note?.title || '');
+      setIsEditingTitle(false);
+    }
+  };
 
   if (!note) {
     return (
@@ -288,7 +492,26 @@ const Editor: React.FC<{
                     </React.Fragment>
                 ))}
                  <ChevronRightIcon className="w-4 h-4 mx-1 text-zinc-600" />
-                 <span className="text-zinc-100 font-semibold">{note.title}</span>
+                 {isEditingTitle ? (
+                    <input
+                        ref={titleInputRef}
+                        type="text"
+                        value={titleValue}
+                        onChange={handleTitleChange}
+                        onBlur={handleTitleBlur}
+                        onKeyDown={handleTitleKeyDown}
+                        className="bg-zinc-800 text-zinc-100 font-semibold px-2 py-1 rounded border border-zinc-600 focus:outline-none focus:border-blue-500"
+                        style={{ minWidth: '150px' }}
+                    />
+                 ) : (
+                    <span
+                        onClick={handleTitleClick}
+                        className="text-zinc-100 font-semibold cursor-pointer hover:bg-zinc-800 px-2 py-1 rounded"
+                        title="Click to edit title"
+                    >
+                        {note.title}
+                    </span>
+                 )}
             </div>
             <div className="flex items-center space-x-2">
                 <button className="p-1 text-zinc-400 hover:bg-zinc-700 rounded"><MoreIconHorizontal className="w-5 h-5" /></button>
