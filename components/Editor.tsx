@@ -17,8 +17,16 @@ import {
   AlignLeftIcon,
   AlignCenterIcon,
   AlignRightIcon,
+  AlignJustifyIcon,
   TableIcon,
+  IndentIncreaseIcon,
+  IndentDecreaseIcon,
+  QuoteIcon,
+  SubscriptIcon,
+  SuperscriptIcon,
+  MindmapIcon,
 } from '../constants';
+import MindmapGenerator from './MindmapGenerator';
 
 // Color picker component
 const ColorPicker: React.FC<{ onSelectColor: (color: string) => void; onClose: () => void }> = ({ onSelectColor, onClose }) => {
@@ -40,11 +48,49 @@ const ColorPicker: React.FC<{ onSelectColor: (color: string) => void; onClose: (
               onSelectColor(color);
               onClose();
             }}
-            className="w-6 h-6 rounded border border-zinc-600 hover:border-zinc-400"
+            className="w-6 h-6 rounded border border-zinc-600 hover:border-zinc-400 transition-colors"
             style={{ backgroundColor: color }}
             title={color}
           />
         ))}
+      </div>
+    </div>
+  );
+};
+
+// Table options component
+const TableOptions: React.FC<{ onSelectTable: (rows: number, cols: number) => void; onClose: () => void }> = ({ onSelectTable, onClose }) => {
+  const [hoveredCell, setHoveredCell] = useState<{ row: number; col: number } | null>(null);
+  const maxRows = 8;
+  const maxCols = 8;
+
+  const handleCellClick = (row: number, col: number) => {
+    onSelectTable(row + 1, col + 1);
+    onClose();
+  };
+
+  return (
+    <div className="absolute top-full left-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-md shadow-lg z-20 p-3">
+      <div className="mb-2 text-xs text-zinc-400 text-center">
+        {hoveredCell ? `${hoveredCell.row + 1} × ${hoveredCell.col + 1}` : 'Select table size'}
+      </div>
+      <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${maxCols}, 1fr)` }}>
+        {Array.from({ length: maxRows * maxCols }).map((_, index) => {
+          const row = Math.floor(index / maxCols);
+          const col = index % maxCols;
+          const isHighlighted = hoveredCell && row <= hoveredCell.row && col <= hoveredCell.col;
+
+          return (
+            <div
+              key={index}
+              className={`w-5 h-5 border border-zinc-600 cursor-pointer transition-colors ${
+                isHighlighted ? 'bg-blue-600' : 'bg-zinc-700 hover:bg-zinc-600'
+              }`}
+              onMouseEnter={() => setHoveredCell({ row, col })}
+              onClick={() => handleCellClick(row, col)}
+            />
+          );
+        })}
       </div>
     </div>
   );
@@ -60,19 +106,26 @@ type ToolbarState = {
     justifyLeft: boolean;
     justifyCenter: boolean;
     justifyRight: boolean;
+    justifyFull: boolean;
+    subscript: boolean;
+    superscript: boolean;
 };
 
 /**
- * A toolbar component for the rich text editor with formatting options.
+ * A comprehensive toolbar component for the rich text editor with extensive formatting options.
  */
-const EditorToolbar: React.FC = () => {
+const EditorToolbar: React.FC<{ onOpenMindmap: () => void; content: string }> = ({ onOpenMindmap, content }) => {
     const [showFontDropdown, setShowFontDropdown] = useState(false);
     const [showSizeDropdown, setShowSizeDropdown] = useState(false);
+    const [showHeadingDropdown, setShowHeadingDropdown] = useState(false);
+    const [showLineHeightDropdown, setShowLineHeightDropdown] = useState(false);
     const [showInsertDropdown, setShowInsertDropdown] = useState(false);
+    const [showTableOptions, setShowTableOptions] = useState(false);
     const [showColorPicker, setShowColorPicker] = useState(false);
     const [showBgColorPicker, setShowBgColorPicker] = useState(false);
-    const [currentFont, setCurrentFont] = useState('Sans Serif');
-    const [currentSize, setCurrentSize] = useState(15);
+    const [currentFont, setCurrentFont] = useState('Arial');
+    const [currentSize, setCurrentSize] = useState(16);
+    const [currentLineHeight, setCurrentLineHeight] = useState(1.6);
     const [toolbarState, setToolbarState] = useState<ToolbarState>({
         bold: false,
         italic: false,
@@ -83,12 +136,17 @@ const EditorToolbar: React.FC = () => {
         justifyLeft: true,
         justifyCenter: false,
         justifyRight: false,
+        justifyFull: false,
+        subscript: false,
+        superscript: false,
     });
-
 
     const fontDropdownRef = useRef<HTMLDivElement>(null);
     const sizeDropdownRef = useRef<HTMLDivElement>(null);
+    const headingDropdownRef = useRef<HTMLDivElement>(null);
+    const lineHeightDropdownRef = useRef<HTMLDivElement>(null);
     const insertDropdownRef = useRef<HTMLDivElement>(null);
+    const tableOptionsRef = useRef<HTMLDivElement>(null);
     const colorPickerRef = useRef<HTMLDivElement>(null);
     const bgColorPickerRef = useRef<HTMLDivElement>(null);
 
@@ -106,6 +164,9 @@ const EditorToolbar: React.FC = () => {
             justifyLeft: document.queryCommandState('justifyLeft'),
             justifyCenter: document.queryCommandState('justifyCenter'),
             justifyRight: document.queryCommandState('justifyRight'),
+            justifyFull: document.queryCommandState('justifyFull'),
+            subscript: document.queryCommandState('subscript'),
+            superscript: document.queryCommandState('superscript'),
         });
     }, []);
 
@@ -133,8 +194,17 @@ const EditorToolbar: React.FC = () => {
             if (sizeDropdownRef.current && !sizeDropdownRef.current.contains(event.target as Node)) {
                 setShowSizeDropdown(false);
             }
+            if (headingDropdownRef.current && !headingDropdownRef.current.contains(event.target as Node)) {
+                setShowHeadingDropdown(false);
+            }
+            if (lineHeightDropdownRef.current && !lineHeightDropdownRef.current.contains(event.target as Node)) {
+                setShowLineHeightDropdown(false);
+            }
             if (insertDropdownRef.current && !insertDropdownRef.current.contains(event.target as Node)) {
                 setShowInsertDropdown(false);
+            }
+            if (tableOptionsRef.current && !tableOptionsRef.current.contains(event.target as Node)) {
+                setShowTableOptions(false);
             }
             if (colorPickerRef.current && !colorPickerRef.current.contains(event.target as Node)) {
                 setShowColorPicker(false);
@@ -152,25 +222,53 @@ const EditorToolbar: React.FC = () => {
 
     /**
      * Executes a document command to apply formatting to the selected text.
-     * @param {string} command - The command to execute (e.g., 'bold', 'italic').
-     * @param {string | null} value - The value for the command, if any (e.g., a font name or URL).
      */
     const format = (command: string, value: string | null = null) => {
         document.execCommand(command, false, value);
         updateToolbarState();
     }
 
+    // Extended font list with web-safe and Google Fonts
     const fonts = [
-        { name: 'Sans Serif', value: 'Arial, Helvetica, sans-serif' },
-        { name: 'Serif', value: "'Times New Roman', Times, serif" },
-        { name: 'Monospace', value: "'Courier New', Courier, monospace" }
+        { name: 'Arial', value: 'Arial, Helvetica, sans-serif' },
+        { name: 'Times New Roman', value: "'Times New Roman', Times, serif" },
+        { name: 'Courier New', value: "'Courier New', Courier, monospace" },
+        { name: 'Georgia', value: "Georgia, serif" },
+        { name: 'Verdana', value: "Verdana, Geneva, sans-serif" },
+        { name: 'Comic Sans', value: "'Comic Sans MS', cursive" },
+        { name: 'Impact', value: "Impact, Charcoal, sans-serif" },
+        { name: 'Trebuchet', value: "'Trebuchet MS', Helvetica, sans-serif" },
+        { name: 'Palatino', value: "'Palatino Linotype', 'Book Antiqua', Palatino, serif" },
+        { name: 'Garamond', value: "Garamond, serif" },
     ];
 
-    const fontSizes = [12, 14, 15, 16, 18, 24, 32];
+    // Extended font sizes
+    const fontSizes = [8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 64, 72, 96];
+
+    // Line height options
+    const lineHeights = [
+        { name: 'Single', value: 1.0 },
+        { name: '1.15', value: 1.15 },
+        { name: '1.5', value: 1.5 },
+        { name: '1.6', value: 1.6 },
+        { name: 'Double', value: 2.0 },
+        { name: '2.5', value: 2.5 },
+        { name: '3.0', value: 3.0 },
+    ];
+
+    // Heading options
+    const headings = [
+        { name: 'Normal', tag: 'p' },
+        { name: 'Heading 1', tag: 'h1' },
+        { name: 'Heading 2', tag: 'h2' },
+        { name: 'Heading 3', tag: 'h3' },
+        { name: 'Heading 4', tag: 'h4' },
+        { name: 'Heading 5', tag: 'h5' },
+        { name: 'Heading 6', tag: 'h6' },
+    ];
 
     /**
      * Handles changing the font family for the selected text.
-     * @param font - The selected font object.
      */
     const handleFontChange = (font: { name: string, value: string }) => {
         format('fontName', font.value);
@@ -180,20 +278,56 @@ const EditorToolbar: React.FC = () => {
 
     /**
      * Handles changing the font size for the selected text.
-     * @param size - The selected font size.
      */
     const handleSizeChange = (size: number) => {
-        let sizeValue = '3'; // Default to 12pt/16px
-        if (size <= 12) sizeValue = '2';      // 10pt
-        else if (size <= 16) sizeValue = '3'; // 12pt
-        else if (size <= 18) sizeValue = '4'; // 14pt
-        else if (size <= 24) sizeValue = '5'; // 18pt
-        else if (size <= 32) sizeValue = '6'; // 24pt
-        else sizeValue = '7';                 // 36pt
+        // Use CSS style instead of deprecated font size
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            const span = document.createElement('span');
+            span.style.fontSize = `${size}px`;
 
-        format('fontSize', sizeValue);
+            try {
+                range.surroundContents(span);
+            } catch {
+                // If surroundContents fails, use insertHTML
+                const selectedText = range.toString();
+                format('insertHTML', `<span style="font-size: ${size}px">${selectedText}</span>`);
+            }
+        }
         setCurrentSize(size);
         setShowSizeDropdown(false);
+    };
+
+    /**
+     * Handles changing heading format.
+     */
+    const handleHeadingChange = (tag: string) => {
+        format('formatBlock', `<${tag}>`);
+        setShowHeadingDropdown(false);
+    };
+
+    /**
+     * Handles changing line height.
+     */
+    const handleLineHeightChange = (lineHeight: number) => {
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            const container = range.commonAncestorContainer;
+            const parentElement = container.nodeType === Node.TEXT_NODE
+                ? container.parentElement
+                : container as HTMLElement;
+
+            if (parentElement) {
+                let blockElement = parentElement.closest('p, h1, h2, h3, h4, h5, h6, div, li');
+                if (blockElement) {
+                    (blockElement as HTMLElement).style.lineHeight = lineHeight.toString();
+                }
+            }
+        }
+        setCurrentLineHeight(lineHeight);
+        setShowLineHeightDropdown(false);
     };
 
     /**
@@ -204,6 +338,7 @@ const EditorToolbar: React.FC = () => {
         if (url) {
             format('createLink', url);
         }
+        setShowInsertDropdown(false);
     };
 
     /**
@@ -214,6 +349,7 @@ const EditorToolbar: React.FC = () => {
         if (url) {
             format('insertImage', url);
         }
+        setShowInsertDropdown(false);
     };
 
     /**
@@ -221,6 +357,7 @@ const EditorToolbar: React.FC = () => {
      */
     const handleInsertHR = () => {
         format('insertHorizontalRule', null);
+        setShowInsertDropdown(false);
     };
 
     /**
@@ -234,83 +371,144 @@ const EditorToolbar: React.FC = () => {
             const codeElement = document.createElement('code');
             codeElement.textContent = selectedText || 'code';
             codeElement.style.backgroundColor = '#27272a';
+            codeElement.style.color = '#a1a1aa';
             codeElement.style.padding = '2px 6px';
-            codeElement.style.borderRadius = '3px';
+            codeElement.style.borderRadius = '4px';
             codeElement.style.fontFamily = 'monospace';
+            codeElement.style.fontSize = '0.9em';
             range.deleteContents();
             range.insertNode(codeElement);
         }
+        setShowInsertDropdown(false);
     };
 
     /**
-     * Handles undo action.
+     * Handles inserting a blockquote.
      */
-    const handleUndo = () => {
-        document.execCommand('undo', false);
+    const handleInsertBlockquote = () => {
+        format('formatBlock', '<blockquote>');
+        // Apply custom styling
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            const blockquote = range.commonAncestorContainer.parentElement?.closest('blockquote') as HTMLElement;
+            if (blockquote) {
+                blockquote.style.borderLeft = '4px solid #3b82f6';
+                blockquote.style.paddingLeft = '16px';
+                blockquote.style.marginLeft = '0';
+                blockquote.style.fontStyle = 'italic';
+                blockquote.style.color = '#a1a1aa';
+            }
+        }
+        setShowInsertDropdown(false);
     };
 
     /**
-     * Handles redo action.
+     * Handles inserting a table.
      */
-    const handleRedo = () => {
-        document.execCommand('redo', false);
+    const handleInsertTable = (rows: number, cols: number) => {
+        let tableHTML = '<table style="width: 100%; border-collapse: collapse; margin: 16px 0;"><tbody>';
+
+        for (let i = 0; i < rows; i++) {
+            tableHTML += '<tr>';
+            for (let j = 0; j < cols; j++) {
+                tableHTML += '<td style="border: 1px solid #52525b; padding: 8px; min-width: 50px;">&nbsp;</td>';
+            }
+            tableHTML += '</tr>';
+        }
+
+        tableHTML += '</tbody></table><p><br></p>';
+        format('insertHTML', tableHTML);
+        setShowTableOptions(false);
     };
-    
+
+    /**
+     * Handles undo/redo actions.
+     */
+    const handleUndo = () => document.execCommand('undo', false);
+    const handleRedo = () => document.execCommand('redo', false);
+
     return (
-        <div className="flex items-center space-x-1 p-2 border-b border-zinc-700 bg-zinc-800 flex-wrap">
-            {/* Insert Dropdown */}
-            <div ref={insertDropdownRef} className="relative">
+        <div className="flex items-center space-x-1 p-2 border-b border-zinc-700 bg-zinc-800/50 flex-wrap gap-y-1">
+            {/* Undo/Redo */}
+            <button onClick={handleUndo} title="Undo (Ctrl+Z)" className="p-2 hover:bg-zinc-700 rounded-md transition-colors">
+                <ArrowUturnLeftIcon className="w-4 h-4" />
+            </button>
+            <button onClick={handleRedo} title="Redo (Ctrl+Y)" className="p-2 hover:bg-zinc-700 rounded-md transition-colors">
+                <ArrowUturnRightIcon className="w-4 h-4" />
+            </button>
+
+            <div className="h-6 border-l border-zinc-600 mx-1"></div>
+
+            {/* Heading Dropdown */}
+            <div ref={headingDropdownRef} className="relative">
                 <button
-                    onClick={() => setShowInsertDropdown(prev => !prev)}
-                    className="flex items-center space-x-1 p-2 hover:bg-zinc-700 rounded-md"
+                    onClick={() => setShowHeadingDropdown(prev => !prev)}
+                    className="flex items-center space-x-1 px-2 py-1.5 hover:bg-zinc-700 rounded-md text-sm transition-colors"
+                    title="Text Style"
                 >
-                    <span>Insert</span>
-                    <ChevronDownIcon className="w-4 h-4"/>
+                    <span className="font-medium">¶</span>
+                    <ChevronDownIcon className="w-3 h-3"/>
                 </button>
-                {showInsertDropdown && (
-                    <div className="absolute top-full left-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-md shadow-lg z-10 w-48">
-                        <button onClick={() => { handleInsertImage(); setShowInsertDropdown(false); }} className="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-700">Image</button>
-                        <button onClick={() => { handleInsertLink(); setShowInsertDropdown(false); }} className="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-700">Link</button>
-                        <button onClick={() => { handleInsertCode(); setShowInsertDropdown(false); }} className="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-700">Code</button>
-                        <button onClick={() => { handleInsertHR(); setShowInsertDropdown(false); }} className="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-700">Horizontal Line</button>
-                        <button onClick={() => { format('insertHTML', '<table style="width: 100%; border-collapse: collapse;"><tbody><tr><td style="border: 1px solid #52525b; padding: 8px;">&nbsp;</td><td style="border: 1px solid #52525b; padding: 8px;">&nbsp;</td></tr><tr><td style="border: 1px solid #52525b; padding: 8px;">&nbsp;</td><td style="border: 1px solid #52525b; padding: 8px;">&nbsp;</td></tr></tbody></table><p><br></p>'); setShowInsertDropdown(false); }} className="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-700">Table</button>
+                {showHeadingDropdown && (
+                    <div className="absolute top-full left-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-md shadow-lg z-10 w-40">
+                        {headings.map(heading => (
+                            <button
+                                key={heading.tag}
+                                onClick={() => handleHeadingChange(heading.tag)}
+                                className="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-700 transition-colors"
+                            >
+                                {heading.name}
+                            </button>
+                        ))}
                     </div>
                 )}
             </div>
-            <button onClick={() => format('formatBlock', '<h1>')} title="Format as Heading" className="flex items-center space-x-1 p-2 hover:bg-zinc-700 rounded-md">
-                <span className="text-sm font-semibold">H</span>
-            </button>
-            <button onClick={handleUndo} title="Undo" className="p-2 hover:bg-zinc-700 rounded-md"><ArrowUturnLeftIcon className="w-5 h-5" /></button>
-            <button onClick={handleRedo} title="Redo" className="p-2 hover:bg-zinc-700 rounded-md"><ArrowUturnRightIcon className="w-5 h-5" /></button>
-            <div className="h-6 border-l border-zinc-600 mx-2"></div>
 
             {/* Font Family Dropdown */}
             <div ref={fontDropdownRef} className="relative">
-                <button onClick={() => setShowFontDropdown(prev => !prev)} className="flex items-center space-x-1 p-2 hover:bg-zinc-700 rounded-md w-28 justify-between">
-                    <span>{currentFont}</span>
-                    <ChevronDownIcon className="w-4 h-4"/>
+                <button
+                    onClick={() => setShowFontDropdown(prev => !prev)}
+                    className="flex items-center space-x-1 px-2 py-1.5 hover:bg-zinc-700 rounded-md w-32 justify-between text-sm transition-colors"
+                    title="Font Family"
+                >
+                    <span className="truncate">{currentFont}</span>
+                    <ChevronDownIcon className="w-3 h-3 flex-shrink-0"/>
                 </button>
                 {showFontDropdown && (
-                    <div className="absolute top-full left-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-md shadow-lg z-10 w-40">
+                    <div className="absolute top-full left-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-md shadow-lg z-10 w-48 max-h-64 overflow-y-auto">
                         {fonts.map(font => (
-                            <button key={font.name} onClick={() => handleFontChange(font)} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-700">
+                            <button
+                                key={font.name}
+                                onClick={() => handleFontChange(font)}
+                                className="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-700 transition-colors"
+                                style={{ fontFamily: font.value }}
+                            >
                                 {font.name}
                             </button>
                         ))}
                     </div>
                 )}
             </div>
-            
+
             {/* Font Size Dropdown */}
             <div ref={sizeDropdownRef} className="relative">
-                 <button onClick={() => setShowSizeDropdown(prev => !prev)} className="flex items-center space-x-1 p-2 hover:bg-zinc-700 rounded-md w-16 justify-between">
+                <button
+                    onClick={() => setShowSizeDropdown(prev => !prev)}
+                    className="flex items-center space-x-1 px-2 py-1.5 hover:bg-zinc-700 rounded-md w-16 justify-between text-sm transition-colors"
+                    title="Font Size"
+                >
                     <span>{currentSize}</span>
-                    <ChevronDownIcon className="w-4 h-4"/>
+                    <ChevronDownIcon className="w-3 h-3"/>
                 </button>
                 {showSizeDropdown && (
-                     <div className="absolute top-full left-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-md shadow-lg z-10">
+                    <div className="absolute top-full left-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-md shadow-lg z-10 max-h-64 overflow-y-auto">
                         {fontSizes.map(size => (
-                            <button key={size} onClick={() => handleSizeChange(size)} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-700">
+                            <button
+                                key={size}
+                                onClick={() => handleSizeChange(size)}
+                                className="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-700 transition-colors"
+                            >
                                 {size}
                             </button>
                         ))}
@@ -318,38 +516,75 @@ const EditorToolbar: React.FC = () => {
                 )}
             </div>
 
-            <div className="h-6 border-l border-zinc-600 mx-2"></div>
-            
-            <button onClick={() => format('bold')} title="Bold" className={`p-2 hover:bg-zinc-700 rounded-md ${toolbarState.bold ? 'bg-zinc-600' : ''}`}><BoldIcon className="w-5 h-5" /></button>
-            <button onClick={() => format('italic')} title="Italic" className={`p-2 hover:bg-zinc-700 rounded-md ${toolbarState.italic ? 'bg-zinc-600' : ''}`}><ItalicIcon className="w-5 h-5" /></button>
-            <button onClick={() => format('underline')} title="Underline" className={`p-2 hover:bg-zinc-700 rounded-md ${toolbarState.underline ? 'bg-zinc-600' : ''}`}><UnderlineIcon className="w-5 h-5" /></button>
-            <button onClick={() => format('strikeThrough')} title="Strikethrough" className={`p-2 hover:bg-zinc-700 rounded-md ${toolbarState.strikeThrough ? 'bg-zinc-600' : ''}`}><StrikethroughIcon className="w-5 h-5" /></button>
+            {/* Line Height Dropdown */}
+            <div ref={lineHeightDropdownRef} className="relative">
+                <button
+                    onClick={() => setShowLineHeightDropdown(prev => !prev)}
+                    className="flex items-center space-x-1 px-2 py-1.5 hover:bg-zinc-700 rounded-md text-sm transition-colors"
+                    title="Line Spacing"
+                >
+                    <span className="text-xs">⇅</span>
+                    <ChevronDownIcon className="w-3 h-3"/>
+                </button>
+                {showLineHeightDropdown && (
+                    <div className="absolute top-full left-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-md shadow-lg z-10 w-32">
+                        {lineHeights.map(lh => (
+                            <button
+                                key={lh.value}
+                                onClick={() => handleLineHeightChange(lh.value)}
+                                className="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-700 transition-colors"
+                            >
+                                {lh.name}
+                            </button>
+                        ))}
+                    </div>
+                )}
+            </div>
 
-            <div className="h-6 border-l border-zinc-600 mx-2"></div>
+            <div className="h-6 border-l border-zinc-600 mx-1"></div>
 
-            <button onClick={() => format('insertUnorderedList')} title="Bulleted List" className={`p-2 hover:bg-zinc-700 rounded-md ${toolbarState.unorderedList ? 'bg-zinc-600' : ''}`}><ListUnorderedIcon className="w-5 h-5" /></button>
-            <button onClick={() => format('insertOrderedList')} title="Numbered List" className={`p-2 hover:bg-zinc-700 rounded-md ${toolbarState.orderedList ? 'bg-zinc-600' : ''}`}><ListOrderedIcon className="w-5 h-5" /></button>
-            <button onClick={handleInsertLink} title="Insert Link" className="p-2 hover:bg-zinc-700 rounded-md"><LinkIcon className="w-5 h-5" /></button>
-            <button onClick={() => format('insertHTML', '<table style="width: 100%; border-collapse: collapse;"><tbody><tr><td style="border: 1px solid #52525b; padding: 8px;">&nbsp;</td><td style="border: 1px solid #52525b; padding: 8px;">&nbsp;</td></tr><tr><td style="border: 1px solid #52525b; padding: 8px;">&nbsp;</td><td style="border: 1px solid #52525b; padding: 8px;">&nbsp;</td></tr></tbody></table><p><br></p>')} title="Insert Table" className="p-2 hover:bg-zinc-700 rounded-md"><TableIcon className="w-5 h-5" /></button>
+            {/* Text Formatting */}
+            <button
+                onClick={() => format('bold')}
+                title="Bold (Ctrl+B)"
+                className={`p-2 hover:bg-zinc-700 rounded-md transition-colors ${toolbarState.bold ? 'bg-zinc-600' : ''}`}
+            >
+                <BoldIcon className="w-4 h-4" />
+            </button>
+            <button
+                onClick={() => format('italic')}
+                title="Italic (Ctrl+I)"
+                className={`p-2 hover:bg-zinc-700 rounded-md transition-colors ${toolbarState.italic ? 'bg-zinc-600' : ''}`}
+            >
+                <ItalicIcon className="w-4 h-4" />
+            </button>
+            <button
+                onClick={() => format('underline')}
+                title="Underline (Ctrl+U)"
+                className={`p-2 hover:bg-zinc-700 rounded-md transition-colors ${toolbarState.underline ? 'bg-zinc-600' : ''}`}
+            >
+                <UnderlineIcon className="w-4 h-4" />
+            </button>
+            <button
+                onClick={() => format('strikeThrough')}
+                title="Strikethrough"
+                className={`p-2 hover:bg-zinc-700 rounded-md transition-colors ${toolbarState.strikeThrough ? 'bg-zinc-600' : ''}`}
+            >
+                <StrikethroughIcon className="w-4 h-4" />
+            </button>
 
-            <div className="h-6 border-l border-zinc-600 mx-2"></div>
-
-            <button onClick={() => format('justifyLeft')} title="Align Left" className={`p-2 hover:bg-zinc-700 rounded-md ${toolbarState.justifyLeft ? 'bg-zinc-600' : ''}`}><AlignLeftIcon className="w-5 h-5" /></button>
-            <button onClick={() => format('justifyCenter')} title="Align Center" className={`p-2 hover:bg-zinc-700 rounded-md ${toolbarState.justifyCenter ? 'bg-zinc-600' : ''}`}><AlignCenterIcon className="w-5 h-5" /></button>
-            <button onClick={() => format('justifyRight')} title="Align Right" className={`p-2 hover:bg-zinc-700 rounded-md ${toolbarState.justifyRight ? 'bg-zinc-600' : ''}`}><AlignRightIcon className="w-5 h-5" /></button>
-
-            <div className="h-6 border-l border-zinc-600 mx-2"></div>
+            <div className="h-6 border-l border-zinc-600 mx-1"></div>
 
             {/* Text Color Picker */}
             <div ref={colorPickerRef} className="relative">
                 <button
                     onClick={() => setShowColorPicker(prev => !prev)}
                     title="Text Color"
-                    className="p-2 hover:bg-zinc-700 rounded-md flex items-center"
+                    className="p-2 hover:bg-zinc-700 rounded-md flex items-center transition-colors"
                 >
                     <div className="flex flex-col items-center">
                         <span className="text-sm font-bold">A</span>
-                        <div className="w-5 h-0.5 bg-yellow-400 mt-0.5"></div>
+                        <div className="w-4 h-0.5 bg-blue-400 mt-0.5"></div>
                     </div>
                 </button>
                 {showColorPicker && (
@@ -365,9 +600,9 @@ const EditorToolbar: React.FC = () => {
                 <button
                     onClick={() => setShowBgColorPicker(prev => !prev)}
                     title="Background Color"
-                    className="p-2 hover:bg-zinc-700 rounded-md"
+                    className="p-2 hover:bg-zinc-700 rounded-md transition-colors"
                 >
-                    <div className="w-5 h-5 border-2 border-zinc-400 rounded" style={{ background: 'linear-gradient(to bottom, transparent 50%, #fbbf24 50%)' }}></div>
+                    <div className="w-4 h-4 border-2 border-zinc-400 rounded" style={{ background: 'linear-gradient(to bottom, transparent 50%, #fbbf24 50%)' }}></div>
                 </button>
                 {showBgColorPicker && (
                     <ColorPicker
@@ -377,18 +612,163 @@ const EditorToolbar: React.FC = () => {
                 )}
             </div>
 
-            <button onClick={() => format('removeFormat', null)} title="Clear Formatting" className="p-2 hover:bg-zinc-700 rounded-md text-xs font-semibold">Clear</button>
+            <div className="h-6 border-l border-zinc-600 mx-1"></div>
+
+            {/* Lists */}
+            <button
+                onClick={() => format('insertUnorderedList')}
+                title="Bulleted List"
+                className={`p-2 hover:bg-zinc-700 rounded-md transition-colors ${toolbarState.unorderedList ? 'bg-zinc-600' : ''}`}
+            >
+                <ListUnorderedIcon className="w-4 h-4" />
+            </button>
+            <button
+                onClick={() => format('insertOrderedList')}
+                title="Numbered List"
+                className={`p-2 hover:bg-zinc-700 rounded-md transition-colors ${toolbarState.orderedList ? 'bg-zinc-600' : ''}`}
+            >
+                <ListOrderedIcon className="w-4 h-4" />
+            </button>
+
+            {/* Indentation */}
+            <button
+                onClick={() => format('indent')}
+                title="Increase Indent"
+                className="p-2 hover:bg-zinc-700 rounded-md transition-colors"
+            >
+                <IndentIncreaseIcon className="w-4 h-4" />
+            </button>
+            <button
+                onClick={() => format('outdent')}
+                title="Decrease Indent"
+                className="p-2 hover:bg-zinc-700 rounded-md transition-colors"
+            >
+                <IndentDecreaseIcon className="w-4 h-4" />
+            </button>
+
+            <div className="h-6 border-l border-zinc-600 mx-1"></div>
+
+            {/* Alignment */}
+            <button
+                onClick={() => format('justifyLeft')}
+                title="Align Left"
+                className={`p-2 hover:bg-zinc-700 rounded-md transition-colors ${toolbarState.justifyLeft ? 'bg-zinc-600' : ''}`}
+            >
+                <AlignLeftIcon className="w-4 h-4" />
+            </button>
+            <button
+                onClick={() => format('justifyCenter')}
+                title="Align Center"
+                className={`p-2 hover:bg-zinc-700 rounded-md transition-colors ${toolbarState.justifyCenter ? 'bg-zinc-600' : ''}`}
+            >
+                <AlignCenterIcon className="w-4 h-4" />
+            </button>
+            <button
+                onClick={() => format('justifyRight')}
+                title="Align Right"
+                className={`p-2 hover:bg-zinc-700 rounded-md transition-colors ${toolbarState.justifyRight ? 'bg-zinc-600' : ''}`}
+            >
+                <AlignRightIcon className="w-4 h-4" />
+            </button>
+            <button
+                onClick={() => format('justifyFull')}
+                title="Justify"
+                className={`p-2 hover:bg-zinc-700 rounded-md transition-colors ${toolbarState.justifyFull ? 'bg-zinc-600' : ''}`}
+            >
+                <AlignJustifyIcon className="w-4 h-4" />
+            </button>
+
+            <div className="h-6 border-l border-zinc-600 mx-1"></div>
+
+            {/* Subscript/Superscript */}
+            <button
+                onClick={() => format('subscript')}
+                title="Subscript"
+                className={`p-2 hover:bg-zinc-700 rounded-md transition-colors ${toolbarState.subscript ? 'bg-zinc-600' : ''}`}
+            >
+                <SubscriptIcon className="w-4 h-4" />
+            </button>
+            <button
+                onClick={() => format('superscript')}
+                title="Superscript"
+                className={`p-2 hover:bg-zinc-700 rounded-md transition-colors ${toolbarState.superscript ? 'bg-zinc-600' : ''}`}
+            >
+                <SuperscriptIcon className="w-4 h-4" />
+            </button>
+
+            <div className="h-6 border-l border-zinc-600 mx-1"></div>
+
+            {/* Insert Dropdown */}
+            <div ref={insertDropdownRef} className="relative">
+                <button
+                    onClick={() => setShowInsertDropdown(prev => !prev)}
+                    className="flex items-center space-x-1 px-2 py-1.5 hover:bg-zinc-700 rounded-md text-sm transition-colors"
+                    title="Insert"
+                >
+                    <span>Insert</span>
+                    <ChevronDownIcon className="w-3 h-3"/>
+                </button>
+                {showInsertDropdown && (
+                    <div className="absolute top-full left-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-md shadow-lg z-10 w-48">
+                        <button onClick={handleInsertLink} className="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-700 transition-colors">
+                            <LinkIcon className="w-4 h-4 inline mr-2" />Link
+                        </button>
+                        <button onClick={handleInsertImage} className="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-700 transition-colors">
+                            <span className="inline-block w-4 h-4 mr-2">🖼️</span>Image
+                        </button>
+                        <button onClick={() => { setShowInsertDropdown(false); setShowTableOptions(true); }} className="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-700 transition-colors">
+                            <TableIcon className="w-4 h-4 inline mr-2" />Table
+                        </button>
+                        <button onClick={handleInsertBlockquote} className="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-700 transition-colors">
+                            <QuoteIcon className="w-4 h-4 inline mr-2" />Quote
+                        </button>
+                        <button onClick={handleInsertCode} className="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-700 transition-colors">
+                            <span className="inline-block w-4 h-4 mr-2 font-mono text-xs">&lt;/&gt;</span>Code
+                        </button>
+                        <button onClick={handleInsertHR} className="block w-full text-left px-3 py-2 text-sm hover:bg-zinc-700 transition-colors">
+                            <span className="inline-block w-4 h-4 mr-2">—</span>Horizontal Line
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            {/* Table Options */}
+            <div ref={tableOptionsRef} className="relative">
+                {showTableOptions && (
+                    <TableOptions
+                        onSelectTable={handleInsertTable}
+                        onClose={() => setShowTableOptions(false)}
+                    />
+                )}
+            </div>
+
+            <div className="h-6 border-l border-zinc-600 mx-1"></div>
+
+            {/* Mindmap Generator */}
+            <button
+                onClick={onOpenMindmap}
+                title="Gerar Mindmap ou Diagrama"
+                className="p-2 hover:bg-zinc-700 rounded-md transition-colors flex items-center gap-1 text-sm"
+            >
+                <MindmapIcon className="w-4 h-4 text-purple-400" />
+                <span className="hidden sm:inline">Mindmap</span>
+            </button>
+
+            <div className="h-6 border-l border-zinc-600 mx-1"></div>
+
+            <button
+                onClick={() => format('removeFormat', null)}
+                title="Clear Formatting"
+                className="px-2 py-1.5 hover:bg-zinc-700 rounded-md text-xs font-semibold transition-colors"
+            >
+                Clear
+            </button>
         </div>
     );
 }
 
 /**
  * The main rich text editor component.
- * @param {object} props - The component props.
- * @param {Note | null} props.note - The currently selected note to display.
- * @param {string[]} props.notebookPath - The breadcrumb path for the current notebook.
- * @param {(noteId: string, newContent: string) => void} props.onUpdateNote - Callback to update a note's content.
- * @param {(noteId: string, newTitle: string) => void} props.onUpdateTitle - Callback to update a note's title.
  */
 const Editor: React.FC<{
     note: Note | null;
@@ -399,26 +779,21 @@ const Editor: React.FC<{
   const editorRef = useRef<HTMLDivElement>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState('');
+  const [showMindmapGenerator, setShowMindmapGenerator] = useState(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // This effect synchronizes the editor's content with the selected note.
-    // It only updates the innerHTML if the note's content is different,
-    // preventing the cursor from jumping during typing.
     if (editorRef.current && note && editorRef.current.innerHTML !== note.content) {
       editorRef.current.innerHTML = note.content;
-    }
-     else if (editorRef.current && !note) {
-      editorRef.current.innerHTML = ''; // Clear editor if no note is selected
+    } else if (editorRef.current && !note) {
+      editorRef.current.innerHTML = '';
     }
 
-    // Update title value when note changes
     if (note) {
       setTitleValue(note.title);
     }
   }, [note]);
 
-  // Focus title input when editing starts
   useEffect(() => {
     if (isEditingTitle && titleInputRef.current) {
       titleInputRef.current.focus();
@@ -426,11 +801,7 @@ const Editor: React.FC<{
     }
   }, [isEditingTitle]);
 
-
-  // Debounced content change handler could be an improvement here.
   const handleContentChange = useCallback(() => {
-    // When the user types, this function is called.
-    // It reads the editor's innerHTML and calls the onUpdateNote prop.
     if (editorRef.current && note) {
       const newContent = editorRef.current.innerHTML;
       if (newContent !== note.content) {
@@ -439,9 +810,7 @@ const Editor: React.FC<{
     }
   }, [note, onUpdateNote]);
 
-  const handleTitleClick = () => {
-    setIsEditingTitle(true);
-  };
+  const handleTitleClick = () => setIsEditingTitle(true);
 
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setTitleValue(e.target.value);
@@ -466,18 +835,40 @@ const Editor: React.FC<{
     }
   };
 
+  const handleInsertMermaid = (mermaidCode: string) => {
+    if (editorRef.current && note) {
+      // Insert Mermaid diagram as a pre element with special class
+      const mermaidHtml = `<pre class="mermaid-diagram" contenteditable="false" style="background-color: #18181b; padding: 16px; border-radius: 8px; border: 1px solid #3f3f46; margin: 16px 0;">${mermaidCode}</pre><p><br></p>`;
+
+      // Insert at cursor position or at the end
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        range.deleteContents();
+        const div = document.createElement('div');
+        div.innerHTML = mermaidHtml;
+        range.insertNode(div.firstChild!);
+      } else {
+        editorRef.current.innerHTML += mermaidHtml;
+      }
+
+      // Trigger content update
+      handleContentChange();
+    }
+  };
+
   if (!note) {
     return (
         <div className="flex-1 flex flex-col h-full bg-zinc-900">
              <div className="p-2.5 border-b border-zinc-700 h-[45px]"></div>
-             <EditorToolbar />
+             <EditorToolbar onOpenMindmap={() => {}} content="" />
              <div className="flex-1 flex items-center justify-center text-zinc-500">
                  Select a note to view or create a new one.
              </div>
         </div>
     );
   }
-  
+
   const showPlaceholder = !note.content || note.content.replace(/<[^>]*>/g, '').trim().length === 0;
 
   return (
@@ -518,7 +909,16 @@ const Editor: React.FC<{
             </div>
         </div>
       </header>
-      <EditorToolbar />
+      <EditorToolbar
+        onOpenMindmap={() => setShowMindmapGenerator(true)}
+        content={note.content}
+      />
+      <MindmapGenerator
+        isOpen={showMindmapGenerator}
+        onClose={() => setShowMindmapGenerator(false)}
+        content={note.content}
+        onInsert={handleInsertMermaid}
+      />
       <div className="flex-1 overflow-y-auto relative">
           <div
             ref={editorRef}
@@ -543,4 +943,8 @@ const Editor: React.FC<{
   );
 };
 
-export default Editor;
+/**
+ * Export memoized version to prevent unnecessary re-renders
+ * Only re-renders when props actually change
+ */
+export default React.memo(Editor);

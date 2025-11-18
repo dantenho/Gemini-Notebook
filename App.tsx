@@ -1,12 +1,36 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+/**
+ * @fileoverview Main Application Component
+ *
+ * The root component that manages all application state including notes,
+ * hierarchical area structure, and synchronization with Google Drive.
+ *
+ * Features:
+ * - Hierarchical note organization (Area → Stack → Notebook → Note)
+ * - Local storage persistence
+ * - Auto-sync with Google Drive (30s debounce)
+ * - Real-time sync status display
+ * - Performance optimizations with useMemo and useCallback
+ *
+ * @module App
+ */
+
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Note, Node } from './types';
-import { Sidebar } from './components/Sidebar';
 import { NoteList } from './components/NoteList';
 import Editor from './components/Editor';
+import SyncStatus from './components/SyncStatus';
+import { googleDriveService } from './services/googleDriveService';
+import { config, isGoogleDriveAvailable } from './config/env';
 
+/**
+ * Local storage keys for persistence
+ */
 const LOCAL_STORAGE_NOTES_KEY = 'gemini-notebook-notes-v3';
 const LOCAL_STORAGE_AREAS_KEY = 'gemini-notebook-areas-v3';
 
+/**
+ * Initial sample notes for new users
+ */
 const ALL_NOTES_INITIAL: Note[] = [
   {
     id: 'heart-failure',
@@ -25,27 +49,29 @@ const ALL_NOTES_INITIAL: Note[] = [
   },
 ];
 
-// Nova estrutura hierárquica: Área → Pilha → Caderno → Nota
+/**
+ * Initial hierarchical structure: Area → Stack → Notebook → Note
+ */
 const AREAS_INITIAL: Node[] = [
   {
     id: 'medicina',
-    name: 'Medicina',
+    name: 'Medicine',
     type: 'area',
     children: [
       {
         id: 'anatomia-stack',
-        name: 'Anatomia',
+        name: 'Anatomy',
         type: 'stack',
         children: [
           {
             id: 'anatomia-basica',
-            name: 'Anatomia Básica',
+            name: 'Basic Anatomy',
             type: 'notebook',
             noteIds: ['heart-failure']
           },
           {
             id: 'anatomia-avancada',
-            name: 'Anatomia Avançada',
+            name: 'Advanced Anatomy',
             type: 'notebook',
             noteIds: ['hypertension-note']
           }
@@ -56,17 +82,30 @@ const AREAS_INITIAL: Node[] = [
 ];
 
 /**
- * The main application component. Manages all state including notes, areas structure, and selections.
+ * Main Application Component
+ *
+ * Manages all state including notes, areas structure, selections, and sync.
+ * Implements performance optimizations with memoization.
+ *
+ * @returns {JSX.Element} The application UI
  */
 const App: React.FC = () => {
+  // === STATE ===
   const [notes, setNotes] = useState<Note[]>([]);
   const [areas, setAreas] = useState<Node[]>([]);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
 
+  // Refs for tracking lifecycle
   const isInitialLoad = useRef(true);
+  const autoSyncTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // === EFFECT: LOAD FROM LOCAL STORAGE ===
 
   /**
-   * Effect to load notes and areas from localStorage on initial render.
+   * Effect: Load notes and areas from localStorage on initial render
+   *
+   * Runs once on component mount to restore saved state.
+   * Falls back to initial sample data if no saved data exists.
    */
   useEffect(() => {
     try {
@@ -90,8 +129,13 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // === EFFECT: SAVE TO LOCAL STORAGE ===
+
   /**
-   * Effect to save notes and areas to localStorage whenever they change.
+   * Effect: Save notes and areas to localStorage whenever they change
+   *
+   * Skips the initial load to avoid overwriting just-loaded data.
+   * Implements persistence for all user changes.
    */
   useEffect(() => {
     if (isInitialLoad.current) {
@@ -106,10 +150,66 @@ const App: React.FC = () => {
     }
   }, [notes, areas]);
 
+  // === EFFECT: AUTO-SYNC TO GOOGLE DRIVE ===
+
   /**
-   * Recursively finds a node by its ID in the tree.
+   * Effect: Auto-sync to Google Drive after inactivity
+   *
+   * Implements 30-second debounce - sync starts 30 seconds after the
+   * last change to notes or areas. Only syncs if Google Drive is available
+   * and user is connected.
+   *
+   * Performance optimization:
+   * - Debouncing prevents excessive sync operations
+   * - Cleans up timer on unmount or before next sync
    */
-  const findNodeById = (nodes: Node[], id: string): Node | null => {
+  useEffect(() => {
+    // Skip if not connected or no Google Drive credentials
+    if (!isGoogleDriveAvailable() || !googleDriveService.getSyncStatus().isConnected) {
+      return;
+    }
+
+    // Skip on initial load
+    if (isInitialLoad.current) {
+      return;
+    }
+
+    // Clear any existing timer
+    if (autoSyncTimerRef.current) {
+      clearTimeout(autoSyncTimerRef.current);
+    }
+
+    // Set new timer for auto-sync after configured delay (default 30s)
+    autoSyncTimerRef.current = setTimeout(() => {
+      if (notes.length > 0) {
+        console.log('Auto-sync triggered');
+        googleDriveService.syncAll(notes, areas).catch((error) => {
+          console.error('Auto-sync failed:', error);
+        });
+      }
+    }, config.app.autoSyncDelay);
+
+    // Cleanup on unmount or before next effect
+    return () => {
+      if (autoSyncTimerRef.current) {
+        clearTimeout(autoSyncTimerRef.current);
+      }
+    };
+  }, [notes, areas]);
+
+  // === UTILITY FUNCTIONS (MEMOIZED) ===
+
+  /**
+   * Recursively finds a node by its ID in the tree
+   *
+   * Memoized with useCallback to prevent recreation on every render.
+   * Dependencies: areas (tree structure changes)
+   *
+   * @param {Node[]} nodes - Array of nodes to search
+   * @param {string} id - Node ID to find
+   * @returns {Node | null} Found node or null
+   */
+  const findNodeById = useCallback((nodes: Node[], id: string): Node | null => {
     for (const node of nodes) {
       if (node.id === id) return node;
       if (node.children) {
@@ -118,12 +218,20 @@ const App: React.FC = () => {
       }
     }
     return null;
-  };
+  }, []);
 
   /**
-   * Recursively finds the path to a node by its ID.
+   * Recursively finds the path to a node by its ID
+   *
+   * Returns array of node names from root to target.
+   * Used for breadcrumb navigation.
+   *
+   * @param {Node[]} nodes - Array of nodes to search
+   * @param {string} id - Node ID to find path for
+   * @param {string[]} currentPath - Accumulated path (used in recursion)
+   * @returns {string[]} Array of node names
    */
-  const findPath = (nodes: Node[], id: string, currentPath: string[] = []): string[] => {
+  const findPath = useCallback((nodes: Node[], id: string, currentPath: string[] = []): string[] => {
     for (const node of nodes) {
       const newPath = [...currentPath, node.name];
       if (node.id === id) return newPath;
@@ -133,10 +241,37 @@ const App: React.FC = () => {
       }
     }
     return currentPath;
-  };
+  }, []);
 
   /**
-   * Callback to update the content of a specific note.
+   * Find notebook that contains a specific note
+   *
+   * @param {Node[]} nodes - Array of nodes to search
+   * @param {string} noteId - Note ID to find
+   * @returns {Node | null} Notebook node or null
+   */
+  const findNotebookForNote = useCallback((nodes: Node[], noteId: string): Node | null => {
+    for (const node of nodes) {
+      if (node.type === 'notebook' && node.noteIds?.includes(noteId)) {
+        return node;
+      }
+      if (node.children) {
+        const found = findNotebookForNote(node.children, noteId);
+        if (found) return found;
+      }
+    }
+    return null;
+  }, []);
+
+  // === NOTE MANAGEMENT ===
+
+  /**
+   * Update note content
+   *
+   * Optimized with useCallback to prevent recreation.
+   *
+   * @param {string} noteId - ID of note to update
+   * @param {string} newContent - New HTML content
    */
   const handleUpdateNote = useCallback((noteId: string, newContent: string) => {
     setNotes(prevNotes =>
@@ -147,7 +282,10 @@ const App: React.FC = () => {
   }, []);
 
   /**
-   * Callback to update the title of a specific note.
+   * Update note title
+   *
+   * @param {string} noteId - ID of note to update
+   * @param {string} newTitle - New title
    */
   const handleUpdateTitle = useCallback((noteId: string, newTitle: string) => {
     setNotes(prevNotes =>
@@ -157,30 +295,34 @@ const App: React.FC = () => {
     );
   }, []);
 
-  // === ÁREA MANAGEMENT ===
+  // === AREA MANAGEMENT ===
 
   /**
-   * Adds a new area to the root level.
+   * Add new area to root level
+   *
+   * Creates a new area with default name and empty children.
    */
-  const handleAddArea = () => {
+  const handleAddArea = useCallback(() => {
     const newArea: Node = {
       id: `area-${Date.now()}`,
-      name: 'Nova Área',
+      name: 'New Area',
       type: 'area',
       children: []
     };
     setAreas(prev => [...prev, newArea]);
-  };
+  }, []);
 
   // === STACK MANAGEMENT ===
 
   /**
-   * Adds a new stack to a specific area.
+   * Add new stack to a specific area
+   *
+   * @param {string} areaId - ID of parent area
    */
-  const handleAddStack = (areaId: string) => {
+  const handleAddStack = useCallback((areaId: string) => {
     const newStack: Node = {
       id: `stack-${Date.now()}`,
-      name: 'Nova Pilha',
+      name: 'New Stack',
       type: 'stack',
       children: []
     };
@@ -198,12 +340,17 @@ const App: React.FC = () => {
     };
 
     setAreas(updateNode(areas));
-  };
+  }, [areas]);
 
   /**
-   * Removes a stack from a specific area.
+   * Remove stack from a specific area
+   *
+   * Cascading delete: Removes all child notebooks and notes.
+   *
+   * @param {string} areaId - ID of parent area
+   * @param {string} stackId - ID of stack to remove
    */
-  const handleRemoveStack = (areaId: string, stackId: string) => {
+  const handleRemoveStack = useCallback((areaId: string, stackId: string) => {
     const stack = findNodeById(areas, stackId);
     if (!stack) return;
 
@@ -241,17 +388,19 @@ const App: React.FC = () => {
     if (noteIdsToRemove.includes(selectedNoteId || '')) {
       setSelectedNoteId(null);
     }
-  };
+  }, [areas, selectedNoteId, findNodeById]);
 
   // === NOTEBOOK MANAGEMENT ===
 
   /**
-   * Adds a new notebook to a specific stack.
+   * Add new notebook to a specific stack
+   *
+   * @param {string} stackId - ID of parent stack
    */
-  const handleAddNotebook = (stackId: string) => {
+  const handleAddNotebook = useCallback((stackId: string) => {
     const newNotebook: Node = {
       id: `notebook-${Date.now()}`,
-      name: 'Novo Caderno',
+      name: 'New Notebook',
       type: 'notebook',
       noteIds: []
     };
@@ -269,17 +418,25 @@ const App: React.FC = () => {
     };
 
     setAreas(updateNode(areas));
-  };
+  }, [areas]);
 
   /**
-   * Removes a notebook from a specific stack.
+   * Remove notebook from a specific stack
+   *
+   * Cascading delete: Removes all notes in the notebook.
+   *
+   * @param {string} stackId - ID of parent stack
+   * @param {string} notebookId - ID of notebook to remove
    */
-  const handleRemoveNotebook = (stackId: string, notebookId: string) => {
+  const handleRemoveNotebook = useCallback((stackId: string, notebookId: string) => {
     const notebook = findNodeById(areas, notebookId);
-    if (!notebook || !notebook.noteIds) return;
+    if (!notebook) return;
 
-    // Remove all notes in this notebook
-    setNotes(prev => prev.filter(note => !notebook.noteIds?.includes(note.id)));
+    // Get note IDs to remove
+    const noteIdsToRemove = notebook.noteIds || [];
+
+    // Remove notes
+    setNotes(prev => prev.filter(note => !noteIdsToRemove.includes(note.id)));
 
     // Remove notebook from tree
     const updateNode = (nodes: Node[]): Node[] => {
@@ -297,23 +454,28 @@ const App: React.FC = () => {
     setAreas(updateNode(areas));
 
     // Clear selection if needed
-    if (notebook.noteIds.includes(selectedNoteId || '')) {
+    if (noteIdsToRemove.includes(selectedNoteId || '')) {
       setSelectedNoteId(null);
     }
-  };
+  }, [areas, selectedNoteId, findNodeById]);
 
-  // === NOTE MANAGEMENT ===
+  // === NOTE CRUD OPERATIONS ===
 
   /**
-   * Adds a new note to a specific notebook.
+   * Add new note to a specific notebook
+   *
+   * Creates a note with default content and adds it to the beginning
+   * of the notes list and notebook's noteIds.
+   *
+   * @param {string} notebookId - ID of parent notebook
    */
-  const handleAddNote = (notebookId: string) => {
+  const handleAddNote = useCallback((notebookId: string) => {
     const newNote: Note = {
       id: `note-${Date.now()}`,
-      title: 'Nova Nota',
-      description: 'Sem descrição adicional.',
-      date: new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' }),
-      content: '<h1>Nova Nota</h1><p>Comece a escrever aqui...</p>'
+      title: 'New Note',
+      description: '',
+      date: new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+      content: '<h1>New Note</h1><p>Start writing here...</p>'
     };
 
     // Add note to notes list
@@ -336,12 +498,15 @@ const App: React.FC = () => {
 
     // Select the new note
     setSelectedNoteId(newNote.id);
-  };
+  }, [areas]);
 
   /**
-   * Removes a note from a specific notebook.
+   * Remove note from a specific notebook
+   *
+   * @param {string} notebookId - ID of parent notebook
+   * @param {string} noteId - ID of note to remove
    */
-  const handleRemoveNote = (notebookId: string, noteId: string) => {
+  const handleRemoveNote = useCallback((notebookId: string, noteId: string) => {
     // Remove note from notes list
     setNotes(prev => prev.filter(note => note.id !== noteId));
 
@@ -364,50 +529,69 @@ const App: React.FC = () => {
     if (selectedNoteId === noteId) {
       setSelectedNoteId(null);
     }
-  };
+  }, [areas, selectedNoteId]);
 
-  const selectedNote = notes.find(n => n.id === selectedNoteId) || null;
+  // === COMPUTED VALUES (MEMOIZED) ===
 
-  // Find notebook path for breadcrumb
-  const findNotebookForNote = (nodes: Node[], noteId: string): Node | null => {
-    for (const node of nodes) {
-      if (node.type === 'notebook' && node.noteIds?.includes(noteId)) {
-        return node;
-      }
-      if (node.children) {
-        const found = findNotebookForNote(node.children, noteId);
-        if (found) return found;
-      }
-    }
-    return null;
-  };
+  /**
+   * Get currently selected note
+   *
+   * Memoized to prevent recalculation on every render.
+   * Only recalculates when notes array or selectedNoteId changes.
+   */
+  const selectedNote = useMemo(() => {
+    return notes.find(n => n.id === selectedNoteId) || null;
+  }, [notes, selectedNoteId]);
 
-  const selectedNotebook = selectedNoteId ? findNotebookForNote(areas, selectedNoteId) : null;
-  const notebookPath = selectedNotebook ? findPath(areas, selectedNotebook.id) : [];
+  /**
+   * Get notebook and path for selected note
+   *
+   * Used for breadcrumb navigation in the editor.
+   */
+  const selectedNotebook = useMemo(() => {
+    return selectedNoteId ? findNotebookForNote(areas, selectedNoteId) : null;
+  }, [areas, selectedNoteId, findNotebookForNote]);
+
+  const notebookPath = useMemo(() => {
+    return selectedNotebook ? findPath(areas, selectedNotebook.id) : [];
+  }, [areas, selectedNotebook, findPath]);
+
+  // === RENDER ===
 
   return (
-    <div className="flex h-screen font-sans bg-zinc-900 text-zinc-300">
-      <NoteList
-        areas={areas}
-        notes={notes}
-        selectedNoteId={selectedNoteId}
-        onSelectNote={setSelectedNoteId}
-        onAddArea={handleAddArea}
-        onAddStack={handleAddStack}
-        onRemoveStack={handleRemoveStack}
-        onAddNotebook={handleAddNotebook}
-        onRemoveNotebook={handleRemoveNotebook}
-        onAddNote={handleAddNote}
-        onRemoveNote={handleRemoveNote}
-      />
-      <main className="flex-1 flex flex-col">
-        <Editor
-          note={selectedNote}
-          notebookPath={notebookPath}
-          onUpdateNote={handleUpdateNote}
-          onUpdateTitle={handleUpdateTitle}
+    <div className="flex h-screen flex-col font-sans bg-zinc-900 text-zinc-300">
+      <div className="flex flex-1 overflow-hidden">
+        <NoteList
+          areas={areas}
+          notes={notes}
+          selectedNoteId={selectedNoteId}
+          onSelectNote={setSelectedNoteId}
+          onAddArea={handleAddArea}
+          onAddStack={handleAddStack}
+          onRemoveStack={handleRemoveStack}
+          onAddNotebook={handleAddNotebook}
+          onRemoveNotebook={handleRemoveNotebook}
+          onAddNote={handleAddNote}
+          onRemoveNote={handleRemoveNote}
         />
-      </main>
+        <main className="flex-1 flex flex-col overflow-hidden">
+          <Editor
+            note={selectedNote}
+            notebookPath={notebookPath}
+            onUpdateNote={handleUpdateNote}
+            onUpdateTitle={handleUpdateTitle}
+          />
+        </main>
+      </div>
+
+      {/* Sync Status Bar */}
+      {isGoogleDriveAvailable() && (
+        <SyncStatus
+          notes={notes}
+          areas={areas}
+          onSyncComplete={() => console.log('Sync completed')}
+        />
+      )}
     </div>
   );
 };
