@@ -10,6 +10,12 @@ interface NoteListProps {
   onAddNote: () => void;
 }
 
+/**
+ * A component that displays a fallback UI for broken or missing images.
+ * @param {object} props - The component props.
+ * @param {string} props.src - The image source URL.
+ * @param {string} props.alt - The image alt text.
+ */
 const NoteImage: React.FC<{ src?: string; alt: string }> = ({ src, alt }) => {
     const [hasError, setHasError] = React.useState(!src);
 
@@ -39,6 +45,9 @@ const NoteImage: React.FC<{ src?: string; alt: string }> = ({ src, alt }) => {
     );
 };
 
+/**
+ * A component that displays a list of notes for the selected notebook.
+ */
 export const NoteList: React.FC<NoteListProps> = ({ notes, selectedNoteId, onSelectNote, notebookTitle, onAddNote }) => {
   return (
     <aside className="w-[320px] bg-zinc-800/50 border-r border-zinc-700/50 flex flex-col h-screen">
@@ -68,7 +77,7 @@ export const NoteList: React.FC<NoteListProps> = ({ notes, selectedNoteId, onSel
         ))}
       </div>
       <footer className="p-2 border-t border-zinc-700/50 text-center text-xs text-zinc-400">
-          <button onClick={onAddNote} className='w-full p-1.5 hover:bg-zinc-700 rounded-md'>Adicionar nova nota</button>
+          <button onClick={onAddNote} className='w-full p-1.5 hover:bg-zinc-700 rounded-md'>Add new note</button>
       </footer>
     </aside>
   );

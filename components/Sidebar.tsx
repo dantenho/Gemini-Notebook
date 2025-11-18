@@ -13,6 +13,13 @@ const ICONS_MAP: { [key: string]: React.FC<{className?: string}> } = {
     'notebook': NotebookIcon,
 };
 
+/**
+ * A recursive component to render a single node in the notebook tree.
+ * It handles expansion, selection, and icon display for each node.
+ * @param {object} props - The component props.
+ * @param {Node} props.node - The tree node to render.
+ * @param {(id: string) => void} props.onSelectNotebook - Callback for when a notebook is selected.
+ */
 const TreeNode: React.FC<{ node: Node; onSelectNotebook: (id: string) => void; level: number; selectedNotebookId: string | null }> = ({ node, onSelectNotebook, level, selectedNotebookId }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const Icon = ICONS_MAP[node.type] || NotebookIcon;
@@ -60,6 +67,9 @@ const TreeNode: React.FC<{ node: Node; onSelectNotebook: (id: string) => void; l
   );
 };
 
+/**
+ * The main sidebar component that displays the hierarchical tree of notebooks.
+ */
 export const Sidebar: React.FC<SidebarProps> = ({ nodes, onSelectNotebook, selectedNotebookId }) => {
   return (
     <aside className="w-[280px] bg-zinc-900/80 border-r border-zinc-800 flex flex-col h-screen p-2 text-zinc-300">

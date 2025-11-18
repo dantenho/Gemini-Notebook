@@ -32,6 +32,9 @@ type ToolbarState = {
     justifyRight: boolean;
 };
 
+/**
+ * A toolbar component for the rich text editor with formatting options.
+ */
 const EditorToolbar: React.FC = () => {
     const [showFontDropdown, setShowFontDropdown] = useState(false);
     const [showSizeDropdown, setShowSizeDropdown] = useState(false);
@@ -53,6 +56,9 @@ const EditorToolbar: React.FC = () => {
     const fontDropdownRef = useRef<HTMLDivElement>(null);
     const sizeDropdownRef = useRef<HTMLDivElement>(null);
 
+    /**
+     * Queries the document for the current selection's command states and updates the toolbar UI.
+     */
     const updateToolbarState = useCallback(() => {
         setToolbarState({
             bold: document.queryCommandState('bold'),
@@ -67,6 +73,9 @@ const EditorToolbar: React.FC = () => {
         });
     }, []);
 
+    /**
+     * Effect to listen for selection changes and update the toolbar state accordingly.
+     */
     useEffect(() => {
         const handleSelectionChange = () => {
             updateToolbarState();
@@ -77,6 +86,9 @@ const EditorToolbar: React.FC = () => {
         };
     }, [updateToolbarState]);
 
+    /**
+     * Effect to handle clicks outside of dropdowns to close them.
+     */
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (fontDropdownRef.current && !fontDropdownRef.current.contains(event.target as Node)) {
@@ -93,6 +105,11 @@ const EditorToolbar: React.FC = () => {
         };
     }, []);
 
+    /**
+     * Executes a document command to apply formatting to the selected text.
+     * @param {string} command - The command to execute (e.g., 'bold', 'italic').
+     * @param {string | null} value - The value for the command, if any (e.g., a font name or URL).
+     */
     const format = (command: string, value: string | null = null) => {
         document.execCommand(command, false, value);
         updateToolbarState();
@@ -106,12 +123,20 @@ const EditorToolbar: React.FC = () => {
 
     const fontSizes = [12, 14, 15, 16, 18, 24, 32];
 
+    /**
+     * Handles changing the font family for the selected text.
+     * @param font - The selected font object.
+     */
     const handleFontChange = (font: { name: string, value: string }) => {
         format('fontName', font.value);
         setCurrentFont(font.name);
         setShowFontDropdown(false);
     };
 
+    /**
+     * Handles changing the font size for the selected text.
+     * @param size - The selected font size.
+     */
     const handleSizeChange = (size: number) => {
         let sizeValue = '3'; // Default to 12pt/16px
         if (size <= 12) sizeValue = '2';      // 10pt
@@ -129,7 +154,7 @@ const EditorToolbar: React.FC = () => {
     return (
         <div className="flex items-center space-x-1 p-2 border-b border-zinc-700 bg-zinc-800 flex-wrap">
             <button className="flex items-center space-x-1 p-2 hover:bg-zinc-700 rounded-md">
-                <span>Inserir</span>
+                <span>Insert</span>
                 <ChevronDownIcon className="w-4 h-4"/>
             </button>
             <button className="flex items-center space-x-1 p-2 hover:bg-zinc-700 rounded-md">
@@ -198,6 +223,13 @@ const EditorToolbar: React.FC = () => {
     );
 }
 
+/**
+ * The main rich text editor component.
+ * @param {object} props - The component props.
+ * @param {Note | null} props.note - The currently selected note to display.
+ * @param {string[]} props.notebookPath - The breadcrumb path for the current notebook.
+ * @param {(noteId: string, newContent: string) => void} props.onUpdateNote - Callback to update a note's content.
+ */
 const Editor: React.FC<{ 
     note: Note | null; 
     notebookPath: string[];
@@ -206,6 +238,9 @@ const Editor: React.FC<{
   const editorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // This effect synchronizes the editor's content with the selected note.
+    // It only updates the innerHTML if the note's content is different,
+    // preventing the cursor from jumping during typing.
     if (editorRef.current && note && editorRef.current.innerHTML !== note.content) {
       editorRef.current.innerHTML = note.content;
     }
@@ -215,7 +250,10 @@ const Editor: React.FC<{
   }, [note]);
 
 
+  // Debounced content change handler could be an improvement here.
   const handleContentChange = useCallback(() => {
+    // When the user types, this function is called.
+    // It reads the editor's innerHTML and calls the onUpdateNote prop.
     if (editorRef.current && note) {
       const newContent = editorRef.current.innerHTML;
       if (newContent !== note.content) {
@@ -230,7 +268,7 @@ const Editor: React.FC<{
              <div className="p-2.5 border-b border-zinc-700 h-[45px]"></div>
              <EditorToolbar />
              <div className="flex-1 flex items-center justify-center text-zinc-500">
-                 Selecione uma nota para visualizar ou criar uma nova.
+                 Select a note to view or create a new one.
              </div>
         </div>
     );
@@ -274,7 +312,7 @@ const Editor: React.FC<{
           />
           {showPlaceholder && (
              <div className="absolute top-8 md:top-12 lg:top-16 left-8 md:left-12 lg:left-16 text-zinc-500 pointer-events-none">
-                Comece a escrever aqui...
+                Start writing here...
             </div>
           )}
       </div>
