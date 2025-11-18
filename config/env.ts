@@ -28,6 +28,22 @@ export const config = {
   },
 
   /**
+   * AI API credentials
+   */
+  ai: {
+    /** OpenAI API Key for ChatGPT models */
+    openaiKey: import.meta.env.VITE_OPENAI_API_KEY || '',
+    /** Anthropic API Key for Claude models */
+    anthropicKey: import.meta.env.VITE_ANTHROPIC_API_KEY || '',
+    /** Google Gemini API Key */
+    geminiKey: import.meta.env.VITE_GEMINI_API_KEY || '',
+    /** Enable web search feature */
+    enableWebSearch: import.meta.env.VITE_ENABLE_WEB_SEARCH === 'true',
+    /** Enable extended thinking mode */
+    enableExtendedThinking: import.meta.env.VITE_ENABLE_EXTENDED_THINKING === 'true',
+  },
+
+  /**
    * Application settings
    */
   app: {
@@ -73,4 +89,53 @@ export function validateConfig(): boolean {
  */
 export function isGoogleDriveAvailable(): boolean {
   return !!(config.google.clientId && config.google.apiKey);
+}
+
+/**
+ * Check if OpenAI integration is available
+ *
+ * @returns {boolean} True if OpenAI API key is configured
+ */
+export function isOpenAIAvailable(): boolean {
+  return !!config.ai.openaiKey;
+}
+
+/**
+ * Check if Anthropic integration is available
+ *
+ * @returns {boolean} True if Anthropic API key is configured
+ */
+export function isAnthropicAvailable(): boolean {
+  return !!config.ai.anthropicKey;
+}
+
+/**
+ * Check if Gemini integration is available
+ *
+ * @returns {boolean} True if Gemini API key is configured
+ */
+export function isGeminiAvailable(): boolean {
+  return !!config.ai.geminiKey;
+}
+
+/**
+ * Check if any AI provider is available
+ *
+ * @returns {boolean} True if at least one AI API key is configured
+ */
+export function isAIAvailable(): boolean {
+  return isOpenAIAvailable() || isAnthropicAvailable() || isGeminiAvailable();
+}
+
+/**
+ * Get list of available AI providers
+ *
+ * @returns {string[]} Array of available provider names
+ */
+export function getAvailableAIProviders(): string[] {
+  const providers: string[] = [];
+  if (isOpenAIAvailable()) providers.push('openai');
+  if (isAnthropicAvailable()) providers.push('anthropic');
+  if (isGeminiAvailable()) providers.push('gemini');
+  return providers;
 }
