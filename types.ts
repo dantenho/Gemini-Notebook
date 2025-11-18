@@ -13,7 +13,7 @@ export type Note = {
 export type Node = {
   id: string;
   name: string;
-  type: 'space' | 'notebook';
+  type: 'space' | 'area' | 'stack' | 'notebook';
   children?: Node[];
   noteIds?: string[];
   description?: string;
